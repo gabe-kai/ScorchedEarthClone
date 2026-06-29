@@ -89,19 +89,19 @@ export class ScorchedGame {
 
     const tank = this.currentTank();
 
-    if (this.keys.has('ArrowUp')) {
+    if (this.keys.has('ArrowLeft')  || this.keys.has('KeyA')) {
       tank.angle = turnCannon(tank.angle, 1, CANNON_TURN_SPEED, deltaSeconds);
     }
 
-    if (this.keys.has('ArrowDown')) {
+    if (this.keys.has('ArrowRight')  || this.keys.has('KeyD')) {
       tank.angle = turnCannon(tank.angle, -1, CANNON_TURN_SPEED, deltaSeconds);
     }
 
-    if (this.keys.has('ArrowRight')) {
+    if (this.keys.has('ArrowUp')  || this.keys.has('KeyW')) {
       tank.power = Math.min(MAX_POWER, tank.power + POWER_STEP * deltaSeconds);
     }
 
-    if (this.keys.has('ArrowLeft')) {
+    if (this.keys.has('ArrowDown')  || this.keys.has('KeyS')) {
       tank.power = Math.max(MIN_POWER, tank.power - POWER_STEP * deltaSeconds);
     }
   }
