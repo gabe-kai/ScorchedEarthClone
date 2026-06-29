@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Scorched Earth Clone</title>
+    <link rel="stylesheet" href="/src/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="game-panel" aria-label="Scorched Earth Clone">
+        <canvas id="game" width="960" height="540"></canvas>
+      </section>
+      <aside class="hud" aria-label="Game controls and state">
+        <h1>Scorched Earth Clone</h1>
+        <p id="status">Loading...</p>
+        <div class="control-row">
+          <span>Angle</span>
+          <strong id="angle">0 deg</strong>
+        </div>
+        <div class="control-row">
+          <span>Power</span>
+          <strong id="power">0</strong>
+        </div>
+        <div class="control-row">
+          <span>Wind</span>
+          <strong id="wind">0</strong>
+        </div>
+      </aside>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
