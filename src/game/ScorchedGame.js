@@ -503,6 +503,13 @@ export class ScorchedGame {
     // or:
     //   <- 12.5
     //
+    let windArrow = '-';
+
+if (this.wind < 0) {
+  windArrow = '<-';
+} else if (this.wind > 0) {
+  windArrow = '->';
+}
     // Put your new variable declaration RIGHT HERE, above the textContent line.
     //
     // Hint:
@@ -519,7 +526,7 @@ export class ScorchedGame {
     //
     // Finally, change the line below so it uses windArrow and Math.abs(this.wind).
     // This is the only line in this method that should display the wind.
-    this.hud.wind.textContent = this.wind.toFixed(1);
+   this.hud.wind.textContent = `${windArrow} ${Math.abs(this.wind).toFixed(1)}`;
     //
     // DANIEL WIND TASK ENDS HERE
   }
