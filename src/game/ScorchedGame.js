@@ -53,7 +53,7 @@ export class ScorchedGame {
   }
 
   onKeyDown(event) {
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space'].includes(event.code)) {
       event.preventDefault();
     }
 
@@ -107,6 +107,9 @@ export class ScorchedGame {
   }
 
   updateProjectile(deltaSeconds) {
+    // This sends the current wind number into projectile.js.
+    // Daniel's wind-arrow task does not need to change this line.
+    // This line is here so you can connect the HUD number to the real physics.
     moveProjectile(this.projectile, this.wind, deltaSeconds);
 
     const target = this.otherTank();
@@ -212,7 +215,39 @@ export class ScorchedGame {
     this.hud.status.textContent = this.message;
     this.hud.angle.textContent = `${Math.round(tank.angle)} deg`;
     this.hud.power.textContent = Math.round(tank.power).toString();
+
+    // DANIEL WIND TASK STARTS HERE
+    //
+    // Goal:
+    // Make the wind HUD show direction and strength.
+    //
+    // Right now it only shows a number, like:
+    //   12.5
+    //
+    // We want it to show an arrow and a positive number, like:
+    //   -> 12.5
+    // or:
+    //   <- 12.5
+    //
+    // Put your new variable declaration RIGHT HERE, above the textContent line.
+    //
+    // Hint:
+    //   let windArrow = '-';
+    //
+    // Then put your if / else if statement RIGHT AFTER that variable.
+    //
+    // Hint:
+    //   if (this.wind < 0) {
+    //     windArrow = '<-';
+    //   } else if (this.wind > 0) {
+    //     windArrow = '->';
+    //   }
+    //
+    // Finally, change the line below so it uses windArrow and Math.abs(this.wind).
+    // This is the only line in this method that should display the wind.
     this.hud.wind.textContent = this.wind.toFixed(1);
+    //
+    // DANIEL WIND TASK ENDS HERE
   }
 }
 
@@ -224,5 +259,8 @@ function tankCannonPivot(tank) {
 }
 
 function randomWind() {
+  // This picks a new wind strength between about -35 and +35.
+  // Negative wind pushes left. Positive wind pushes right.
+  // Daniel's current task is only to DISPLAY that direction in the HUD.
   return Math.round((Math.random() * 70 - 35) * 10) / 10;
 }

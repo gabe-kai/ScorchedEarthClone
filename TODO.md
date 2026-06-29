@@ -18,108 +18,93 @@ This file is the project map and task list. Start here when deciding what to cha
 - [docs/milestones.md](docs/milestones.md): bigger game milestones.
 - [docs/session-notes.md](docs/session-notes.md): notes from project setup and planning.
 
-## Daniel TODO 1: Fix And Add Control Keys
+## Done: Daniel TODO 1: Fix And Add Control Keys
 
-Right now the controls work, but they are backwards from what we want:
+Daniel updated the controls so left/right rotate the cannon, up/down change power, and WASD also works.
 
-- Up and down arrows change the cannon angle.
-- Left and right arrows change shot power.
+## Daniel TODO 2: Add A Wind Direction Arrow
 
-We want:
+Wind is already in the game. The projectile is pushed sideways by this line in [src/physics/projectile.js](src/physics/projectile.js):
 
-- Left and right arrows rotate the cannon.
-- Up and down arrows change shot power.
-- WASD should also work for left-handed controls.
+```js
+projectile.vx += wind * deltaSeconds;
+```
+
+That means:
+
+- positive wind pushes the projectile to the right
+- negative wind pushes the projectile to the left
+- zero wind does not push sideways
+
+The problem is that the HUD only shows a number. We want the wind display to show both direction and strength.
 
 The file to edit is:
 
 - [src/game/ScorchedGame.js](src/game/ScorchedGame.js)
 
-### Step 1: Find The Key Code
+### Step 1: Find The HUD Code
 
 Open `src/game/ScorchedGame.js`.
 
-Find the `update(deltaSeconds)` method.
+Find the `updateHud()` method near the bottom of the file.
 
-Look for code like this:
+Look for this line:
 
 ```js
-if (this.keys.has('ArrowUp')) {
-  tank.angle = turnCannon(tank.angle, 1, CANNON_TURN_SPEED, deltaSeconds);
+this.hud.wind.textContent = this.wind.toFixed(1);
+```
+
+That line is where the wind number gets shown on the screen.
+
+### Step 2: Decide The Arrow
+
+Make a variable called `windArrow`.
+
+Use this rule:
+
+| Wind Value | Arrow |
+| --- | --- |
+| less than 0 | `<-` |
+| greater than 0 | `->` |
+| exactly 0 | `-` |
+
+You can write this with `if`, `else if`, and `else`.
+
+Example shape:
+
+```js
+let windArrow = '-';
+
+if (this.wind < 0) {
+  windArrow = '<-';
+} else if (this.wind > 0) {
+  windArrow = '->';
 }
 ```
 
-That is one of the places where a key changes the tank.
+### Step 3: Show Arrow Plus Number
 
-### Step 2: Decide The New Controls
-
-Use this mapping:
-
-| Action | Arrow Key | WASD Key |
-| --- | --- | --- |
-| Rotate cannon left/down | `ArrowLeft` | `KeyA` |
-| Rotate cannon right/up | `ArrowRight` | `KeyD` |
-| Raise power | `ArrowUp` | `KeyW` |
-| Lower power | `ArrowDown` | `KeyS` |
-
-For now, keep:
-
-- Fire: `Space`
-- Reset: `KeyR`
-
-### Step 3: Add WASD To The Prevent-Scroll List
-
-Near the top of `onKeyDown(event)`, there is a list of keys that should not scroll the page.
-
-Add the WASD codes to that list:
-
-```js
-'KeyW', 'KeyA', 'KeyS', 'KeyD'
-```
-
-### Step 4: Change The Angle Checks
-
-The angle checks should use left and right controls.
-
-That means each angle check should accept either an arrow key or a WASD key.
+Change the wind HUD line so it shows the arrow and the number together.
 
 Example:
 
 ```js
-if (this.keys.has('ArrowRight') || this.keys.has('KeyD')) {
-  tank.angle = turnCannon(tank.angle, 1, CANNON_TURN_SPEED, deltaSeconds);
-}
+this.hud.wind.textContent = `${windArrow} ${Math.abs(this.wind).toFixed(1)}`;
 ```
 
-Then make the matching check for left:
+Why `Math.abs`? It turns negative numbers positive, so the display can say:
 
-```js
-if (this.keys.has('ArrowLeft') || this.keys.has('KeyA')) {
-  tank.angle = turnCannon(tank.angle, -1, CANNON_TURN_SPEED, deltaSeconds);
-}
+```text
+<- 12.5
 ```
 
-### Step 5: Change The Power Checks
+instead of:
 
-The power checks should use up and down controls.
-
-Example:
-
-```js
-if (this.keys.has('ArrowUp') || this.keys.has('KeyW')) {
-  tank.power = Math.min(MAX_POWER, tank.power + POWER_STEP * deltaSeconds);
-}
+```text
+<- -12.5
 ```
 
-Then make the matching check for lowering power:
-
-```js
-if (this.keys.has('ArrowDown') || this.keys.has('KeyS')) {
-  tank.power = Math.max(MIN_POWER, tank.power - POWER_STEP * deltaSeconds);
-}
-```
-
-### Step 6: Test It
+### Step 4: Test It
 
 Run the game:
 
@@ -129,10 +114,9 @@ npm.cmd run dev
 
 Then check:
 
-- `Left Arrow` and `A` rotate the cannon one way.
-- `Right Arrow` and `D` rotate the cannon the other way.
-- `Up Arrow` and `W` raise power.
-- `Down Arrow` and `S` lower power.
-- `Space` still fires.
+- wind sometimes shows `<-`
+- wind sometimes shows `->`
+- the projectile bends in the same direction as the arrow
+- the number still changes each turn
 
-If that works, Daniel completed the first real game-control task.
+If the wind number is near zero, the projectile may not bend much. Fire a few times and watch the stronger wind values.
