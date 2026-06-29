@@ -16,6 +16,10 @@ const MAX_POWER = 420;
 const TERRAIN_STEP = 8;
 const IMPACT_DURATION_SECONDS = 0.45;
 const SELF_HIT_GRACE_SECONDS = 0.25;
+const CRATER_RADIUS = 36;
+const CRATER_DEPTH = 22;
+const MIN_TERRAIN_Y = 120;
+const MAX_TERRAIN_Y = HEIGHT - 8;
 
 // MAIN GAME CLASS
 //
@@ -45,19 +49,83 @@ export class ScorchedGame {
     // That keeps movement smooth even if the computer is a little slow.
     this.lastTime = 0;
 
+    // animationFrameId lets us cancel the game loop when the page unloads.
+    this.animationFrameId = null;
+
+    // running prevents accidentally starting two animation loops.
+    this.running = false;
+
+    // Bound event handlers are saved so stop() can remove them later.
+    this.handleKeyDown = (event) => this.onKeyDown(event);
+    this.handleKeyUp = (event) => this.onKeyUp(event);
+    this.handleVisibilityChange = () => this.onVisibilityChange();
+    this.handlePageHide = () => this.stop();
+
     // Start the first round.
     this.reset();
   }
 
   start() {
+    if (this.running) {
+      return;
+    }
+
+    this.running = true;
+
     // Keydown happens when a key is pressed.
     // Keyup happens when a key is released.
-    window.addEventListener('keydown', (event) => this.onKeyDown(event));
-    window.addEventListener('keyup', (event) => this.keys.delete(event.code));
+    window.addEventListener('keydown', this.handleKeyDown);
+    window.addEventListener('keyup', this.handleKeyUp);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    window.addEventListener('pagehide', this.handlePageHide);
 
     // requestAnimationFrame asks the browser to call tick before the next draw.
     // This starts the game loop.
-    requestAnimationFrame((time) => this.tick(time));
+    this.scheduleNextFrame();
+  }
+
+  stop() {
+    // SAFETY FOR LONG DEV SESSIONS
+    //
+    // Stop the animation loop and remove event listeners.
+    // This keeps refreshes, page closes, and tool reloads from leaving old
+    // game loops behind.
+    this.running = false;
+    this.keys.clear();
+
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+
+    window.removeEventListener('keydown', this.handleKeyDown);
+    window.removeEventListener('keyup', this.handleKeyUp);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    window.removeEventListener('pagehide', this.handlePageHide);
+  }
+
+  onVisibilityChange() {
+    // Pause the animation loop while the tab is hidden.
+    // Resume with clean timing when the tab becomes visible again.
+    if (document.hidden) {
+      this.keys.clear();
+      if (this.animationFrameId !== null) {
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
+      }
+      return;
+    }
+
+    this.lastTime = 0;
+    this.scheduleNextFrame();
+  }
+
+  scheduleNextFrame() {
+    if (!this.running || document.hidden || this.animationFrameId !== null) {
+      return;
+    }
+
+    this.animationFrameId = requestAnimationFrame((time) => this.tick(time));
   }
 
   reset() {
@@ -138,7 +206,23 @@ export class ScorchedGame {
     this.keys.add(event.code);
   }
 
+  onKeyUp(event) {
+    this.keys.delete(event.code);
+  }
+
   tick(time) {
+    if (!this.running) {
+      return;
+    }
+
+    if (document.hidden) {
+      this.lastTime = 0;
+      this.animationFrameId = null;
+      return;
+    }
+
+    this.animationFrameId = null;
+
     // deltaSeconds means "how many seconds since the last frame?"
     //
     // Tricky bit:
@@ -156,7 +240,7 @@ export class ScorchedGame {
     this.updateHud();
 
     // Schedule the next frame. This keeps the game running.
-    requestAnimationFrame((nextTime) => this.tick(nextTime));
+    this.scheduleNextFrame();
   }
 
   update(deltaSeconds) {
@@ -217,7 +301,7 @@ export class ScorchedGame {
 
     // CHECK FOR A DIRECT HIT
     //
-    // findProjectileTankHit is the place where self-hit support belongs.
+    // findProjectileTankHit checks enemy hits and delayed self-hits.
     const target = this.findProjectileTankHit();
     if (target) {
       this.startImpact('tank', this.projectile.x, this.projectile.y, {
@@ -301,8 +385,11 @@ export class ScorchedGame {
   }
 
   findProjectileTankHit() {
+    // Check the other tank first.
     const candidates = [this.otherTank()];
 
+    // After the cannon ball has been flying for a short time,
+    // also allow it to hit the tank that fired it.
     if (this.projectile.age > SELF_HIT_GRACE_SECONDS) {
       candidates.push(this.currentTank());
     }
@@ -449,37 +536,21 @@ export class ScorchedGame {
   }
 
   drawImpact(ctx, impact) {
-    // DANIEL IMPACT ANIMATION PHASE STARTS HERE
+    // DRAW IMPACT ANIMATION
     //
-    // This function is called while an impact is happening,
-    // but it intentionally draws nothing right now.
-    //
-    // That means the game is READY for hit animations,
-    // but Daniel still gets to create the first visible version.
-    //
-    // Useful values:
-    // - impact.x is where the cannon ball hit.
-    // - impact.y is where the cannon ball hit.
-    // - impact.kind is either 'ground' or 'tank'.
-    // - impact.age is how many seconds the impact has existed.
-    //
+    // Daniel made tank hits and ground hits look different.
+    // The impact.kind value tells us which one happened.
     if (impact.kind === 'tank') {
-      // tank hit drawing goes here
       ctx.fillStyle = '#ff0000';
       ctx.beginPath();
       ctx.arc(impact.x, impact.y, 50, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      // ground hit drawing goes here
       ctx.fillStyle = '#ff6a00';
       ctx.beginPath();
       ctx.arc(impact.x, impact.y, 20, 0, Math.PI * 2);
       ctx.fill();
     }
-    //
-    // DANIEL IMPACT ANIMATION PHASE ENDS HERE
-    void ctx;
-    void impact;
   }
 
   updateHud() {
@@ -492,45 +563,17 @@ export class ScorchedGame {
     this.hud.angle.textContent = `${Math.round(tank.angle)} deg`;
     this.hud.power.textContent = Math.round(tank.power).toString();
 
-    // DANIEL WIND TASK STARTS HERE
-    //
-    // Goal:
-    // Make the wind HUD show direction and strength.
-    //
-    // Right now it only shows a number, like:
-    //   12.5
-    //
-    // We want it to show an arrow and a positive number, like:
-    //   -> 12.5
-    // or:
-    //   <- 12.5
-    //
+    // Show wind direction with an arrow.
+    // Negative wind points left. Positive wind points right.
     let windArrow = '-';
 
-if (this.wind < 0) {
-  windArrow = '<-';
-} else if (this.wind > 0) {
-  windArrow = '->';
-}
-    // Put your new variable declaration RIGHT HERE, above the textContent line.
-    //
-    // Hint:
-    //   let windArrow = '-';
-    //
-    // Then put your if / else if statement RIGHT AFTER that variable.
-    //
-    // Hint:
-    //   if (this.wind < 0) {
-    //     windArrow = '<-';
-    //   } else if (this.wind > 0) {
-    //     windArrow = '->';
-    //   }
-    //
-    // Finally, change the line below so it uses windArrow and Math.abs(this.wind).
-    // This is the only line in this method that should display the wind.
-   this.hud.wind.textContent = `${windArrow} ${Math.abs(this.wind).toFixed(1)}`;
-    //
-    // DANIEL WIND TASK ENDS HERE
+    if (this.wind < 0) {
+      windArrow = '<-';
+    } else if (this.wind > 0) {
+      windArrow = '->';
+    }
+
+    this.hud.wind.textContent = `${windArrow} ${Math.abs(this.wind).toFixed(1)}`;
   }
 
   groundYAt(x) {
@@ -542,29 +585,83 @@ if (this.wind < 0) {
   }
 
   deformTerrainAt(x, y) {
-    // DANIEL CRATER PHASE STARTS HERE
+    // CRATER SCAFFOLD
     //
     // This function is called every time a shot hits the ground.
-    // Right now it does nothing, so the ground does not deform yet.
+    // It loops over every terrain point and asks helper functions:
+    // - where is this point?
+    // - how far is it from the hit?
+    // - is it inside the crater?
+    // - how deep should this point move?
     //
-    // Daniel's future job:
-    // Change nearby terrain points to make a crater.
-    //
-    // Useful ideas:
-    // - x is where the cannon ball hit.
-    // - y is the terrain height where it hit.
-    // - this.terrain is the array of ground heights.
-    // - TERRAIN_STEP tells how many screen pixels are between terrain points.
-    //
-    // Tricky bit:
-    // In canvas, bigger y numbers are lower on screen.
-    // So adding to a terrain value digs downward.
-    //
-    // This line keeps JavaScript from complaining that y is unused for now.
+    // Daniel's next steps are in the helper functions below this class.
     void y;
-    //
-    // DANIEL CRATER PHASE ENDS HERE
+
+    for (let index = 0; index < this.terrain.length; index++) {
+      const pointX = terrainIndexToX(index);
+      const distance = distanceBetween(pointX, x);
+
+      if (isInsideCrater(distance, CRATER_RADIUS)) {
+        const depth = craterDepthAt(distance, CRATER_RADIUS, CRATER_DEPTH);
+
+        // INTENTIONAL BUG FOR DANIEL:
+        // This subtracts, which makes the ground move UP into a hill.
+        // A crater should move the ground DOWN.
+        this.terrain[index] = clampTerrainY(this.terrain[index] - depth);
+      }
+    }
   }
+}
+
+function terrainIndexToX(index) {
+  // Convert a terrain array index into a screen x position.
+  //
+  // Example:
+  // index 0 means x = 0.
+  // index 1 means x = TERRAIN_STEP.
+  // index 2 means x = TERRAIN_STEP * 2.
+  return index * TERRAIN_STEP;
+}
+
+function distanceBetween(a, b) {
+  // Distance should always be positive.
+  // Math.abs turns negative answers into positive answers.
+  return Math.abs(a - b);
+}
+
+function isInsideCrater(distance, craterRadius) {
+  // DANIEL CRATER STEP 1:
+  //
+  // This function decides whether one terrain point is close enough
+  // to the hit to be part of the crater.
+  //
+  // BUG TO FIX:
+  // Returning false means "no points are inside the crater."
+  // That makes no crater appear.
+  //
+  // Fix it so the function returns true when distance is less than craterRadius.
+  void distance;
+  void craterRadius;
+  return false;
+}
+
+function craterDepthAt(distance, craterRadius, maxDepth) {
+  // DANIEL CRATER STEP 3:
+  //
+  // For the first version, every point inside the crater moves by maxDepth.
+  // That makes a blocky crater, which is fine.
+  //
+  // Later, Daniel can use distance and craterRadius here to make the crater
+  // deeper in the middle and shallower at the edges.
+  void distance;
+  void craterRadius;
+  return maxDepth;
+}
+
+function clampTerrainY(y) {
+  // Keep future crater code from pushing terrain to wild values.
+  // This protects long play sessions from impossible terrain shapes.
+  return Math.max(MIN_TERRAIN_Y, Math.min(MAX_TERRAIN_Y, y));
 }
 
 function tankCannonPivot(tank) {
@@ -579,7 +676,6 @@ function tankCannonPivot(tank) {
 function randomWind() {
   // This picks a new wind strength between about -35 and +35.
   // Negative wind pushes left. Positive wind pushes right.
-  // Daniel's current task is only to DISPLAY that direction in the HUD.
   return Math.round((Math.random() * 70 - 35) * 10) / 10;
 }
 

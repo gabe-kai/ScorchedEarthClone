@@ -26,6 +26,8 @@ If PowerShell still has trouble with npm, run the server directly:
 node tools/dev-server.mjs
 ```
 
+When you are done for the day, stop the dev server with `Ctrl+C` in the terminal. The game also pauses its animation loop when the browser tab is hidden, which helps keep long dev sessions lighter.
+
 ## Starter Controls
 
 These are the controls in the first committed version. The first Daniel task in [TODO.md](TODO.md) is to remap these so left/right aim the cannon, up/down adjust power, and WASD works too.

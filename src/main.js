@@ -8,5 +8,15 @@ const hud = {
   wind: document.querySelector('#wind')
 };
 
+// SAFETY FOR LONG DEV SESSIONS
+//
+// If the page script ever runs again without a full browser cleanup,
+// stop the previous game before starting a new one.
+// This prevents multiple requestAnimationFrame loops from stacking up.
+if (window.scorchedGame) {
+  window.scorchedGame.stop();
+}
+
 const game = new ScorchedGame(canvas, hud);
+window.scorchedGame = game;
 game.start();
