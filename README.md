@@ -26,7 +26,9 @@ If PowerShell still has trouble with npm, run the server directly:
 node tools/dev-server.mjs
 ```
 
-## Controls
+## Starter Controls
+
+These are the controls in the first committed version. The first Daniel task in [TODO.md](TODO.md) is to remap these so left/right aim the cannon, up/down adjust power, and WASD works too.
 
 - `ArrowUp` / `ArrowDown`: rotate the current tank cannon
 - `ArrowLeft` / `ArrowRight`: lower or raise shot power
