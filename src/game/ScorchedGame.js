@@ -301,22 +301,16 @@ export class ScorchedGame {
   }
 
   findProjectileTankHit() {
-    // SELF-HIT SCAFFOLD
-    //
-    // Right now, only the other tank can be hit.
-    //
-    // Daniel phase:
-    // Add the current tank too, but only after the shot has been flying
-    // longer than SELF_HIT_GRACE_SECONDS.
-    //
-    // Hint:
-    //   if (this.projectile.age > SELF_HIT_GRACE_SECONDS) {
-    //     check currentTank also
-    //   }
-    const target = this.otherTank();
+    const candidates = [this.otherTank()];
 
-    if (projectileHitTank(this.projectile, target)) {
-      return target;
+    if (this.projectile.age > SELF_HIT_GRACE_SECONDS) {
+      candidates.push(this.currentTank());
+    }
+
+    for (const target of candidates) {
+      if (projectileHitTank(this.projectile, target)) {
+        return target;
+      }
     }
 
     return null;
@@ -469,11 +463,19 @@ export class ScorchedGame {
     // - impact.kind is either 'ground' or 'tank'.
     // - impact.age is how many seconds the impact has existed.
     //
-    // Useful drawing tools:
-    // - ctx.fillStyle = '#f08a24';
-    // - ctx.beginPath();
-    // - ctx.arc(impact.x, impact.y, 20, 0, Math.PI * 2);
-    // - ctx.fill();
+    if (impact.kind === 'tank') {
+      // tank hit drawing goes here
+      ctx.fillStyle = '#ff0000';
+      ctx.beginPath();
+      ctx.arc(impact.x, impact.y, 50, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // ground hit drawing goes here
+      ctx.fillStyle = '#ff6a00';
+      ctx.beginPath();
+      ctx.arc(impact.x, impact.y, 20, 0, Math.PI * 2);
+      ctx.fill();
+    }
     //
     // DANIEL IMPACT ANIMATION PHASE ENDS HERE
     void ctx;
