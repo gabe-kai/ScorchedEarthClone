@@ -16,8 +16,8 @@ const MAX_POWER = 420;
 const TERRAIN_STEP = 8;
 const IMPACT_DURATION_SECONDS = 0.45;
 const SELF_HIT_GRACE_SECONDS = 0.25;
-const CRATER_RADIUS = 36;
-const CRATER_DEPTH = 22;
+const CRATER_RADIUS = 40;
+const CRATER_DEPTH = 50;
 const MIN_TERRAIN_Y = 120;
 const MAX_TERRAIN_Y = HEIGHT - 8;
 
@@ -607,7 +607,7 @@ export class ScorchedGame {
         // INTENTIONAL BUG FOR DANIEL:
         // This subtracts, which makes the ground move UP into a hill.
         // A crater should move the ground DOWN.
-        this.terrain[index] = clampTerrainY(this.terrain[index] - depth);
+        this.terrain[index] = clampTerrainY(this.terrain[index] + depth);
       }
     }
   }
@@ -642,7 +642,7 @@ function isInsideCrater(distance, craterRadius) {
   // Fix it so the function returns true when distance is less than craterRadius.
   void distance;
   void craterRadius;
-  return false;
+  return distance < craterRadius;
 }
 
 function craterDepthAt(distance, craterRadius, maxDepth) {
@@ -655,7 +655,8 @@ function craterDepthAt(distance, craterRadius, maxDepth) {
   // deeper in the middle and shallower at the edges.
   void distance;
   void craterRadius;
-  return maxDepth;
+  const closeness = 1 - distance / craterRadius;
+  return maxDepth * closeness;
 }
 
 function clampTerrainY(y) {
