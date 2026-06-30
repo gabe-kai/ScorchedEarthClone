@@ -4,7 +4,7 @@
 
 Project direction:
 
-- Browser-based Scorched Earth-style tank duel.
+- Browser-based turn-based tank duel.
 - Local turn-based multiplayer first.
 - Player versus AI later.
 - Online play later.

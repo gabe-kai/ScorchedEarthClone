@@ -37,5 +37,5 @@ createServer((request, response) => {
   });
   createReadStream(filePath).pipe(response);
 }).listen(port, () => {
-  console.log(`Scorched Earth Clone dev server running at http://localhost:${port}`);
+  console.log(`Tanks! dev server running at http://localhost:${port}`);
 });

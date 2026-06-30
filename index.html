@@ -3,31 +3,112 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Scorched Earth Clone</title>
+    <title>Tanks!</title>
     <link rel="stylesheet" href="/src/styles.css">
   </head>
   <body>
     <main class="app-shell">
-      <section class="game-panel" aria-label="Scorched Earth Clone">
-        <canvas id="game" width="960" height="540"></canvas>
+      <section class="game-panel" aria-label="Tanks!">
+        <canvas id="game" width="1280" height="720"></canvas>
+        <div class="quickbar-dock" aria-label="Inventory quickbar">
+          <div id="quickbar" class="quickbar"></div>
+        </div>
       </section>
       <aside class="hud" aria-label="Game controls and state">
-        <h1>Scorched Earth Clone</h1>
-        <p id="status">Loading...</p>
-        <div class="control-row">
-          <span>Angle</span>
-          <strong id="angle">0 deg</strong>
-        </div>
-        <div class="control-row">
-          <span>Power</span>
-          <strong id="power">0</strong>
-        </div>
-        <div class="control-row">
-          <span>Wind</span>
-          <strong id="wind">0</strong>
-        </div>
+        <section class="hud-panel">
+          <h1>Tanks!</h1>
+          <div class="control-row">
+            <span>Round / Turn</span>
+            <strong><span id="roundNumber">1</span> / <span id="turnNumber">1</span></strong>
+          </div>
+          <p id="status" class="status-line">Loading...</p>
+        </section>
+
+        <section id="playerPanel" class="hud-panel player-panel">
+          <div class="player-header">
+            <h2 id="playerName">Player 1</h2>
+            <strong id="tankModel">Custom</strong>
+          </div>
+          <div class="control-row">
+            <span>Health</span>
+            <strong id="health">100</strong>
+          </div>
+          <div id="aimGauge" class="aim-gauge" title="Angle 0 deg | Power 0 | Wind 0">
+            <div class="wind-indicator">
+              <div class="wind-arrow" aria-hidden="true">
+                <div class="wind-arrow-track">
+                  <div class="wind-arrow-fill"></div>
+                </div>
+              </div>
+              <span id="windValue" class="wind-value">0 mph</span>
+            </div>
+            <div class="aim-protractor" aria-hidden="true">
+              <div class="protractor-ring"></div>
+              <div class="protractor-tick tick-left"></div>
+              <div class="protractor-tick tick-up"></div>
+              <div class="protractor-tick tick-right"></div>
+              <div class="aim-needle">
+                <div class="aim-needle-power"></div>
+              </div>
+              <div class="aim-pivot"></div>
+            </div>
+            <div class="aim-readout">
+              <span><span class="readout-symbol" title="Angle">&ang;</span> <strong id="angle">0 deg</strong></span>
+              <span><span class="readout-symbol" title="Power">&#9889;</span> <strong id="power">0</strong></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="hud-panel settings-panel">
+          <h2>Settings</h2>
+          <button class="settings-button" type="button" data-modal-target="newGameModal"><span class="button-icon">N</span>New Game</button>
+          <button class="settings-button" type="button" data-modal-target="playerSetupModal"><span class="button-icon">P</span>Player Setup</button>
+          <button class="settings-button" type="button" data-modal-target="tankDesignerModal"><span class="button-icon">T</span>Tank Designer</button>
+          <button class="settings-button" type="button" data-modal-target="ammoDesignerModal"><span class="button-icon">A</span>Ammo Designer</button>
+        </section>
       </aside>
     </main>
+
+    <dialog id="newGameModal" class="modal">
+      <form method="dialog">
+        <h2>New Game</h2>
+        <p>This will hold round setup, terrain reset, and starting player options.</p>
+        <button type="submit">Close</button>
+      </form>
+    </dialog>
+
+    <dialog id="playerSetupModal" class="modal">
+      <form method="dialog">
+        <h2>Player Setup</h2>
+        <p>This will hold player names, colors, and local player options.</p>
+        <button type="submit">Close</button>
+      </form>
+    </dialog>
+
+    <dialog id="tankDesignerModal" class="modal">
+      <form method="dialog">
+        <h2>Tank Designer</h2>
+        <p>This will hold tank model selection and graph-paper point editing.</p>
+        <button type="submit">Close</button>
+      </form>
+    </dialog>
+
+    <dialog id="ammoDesignerModal" class="modal">
+      <form method="dialog">
+        <h2>Ammo Designer</h2>
+        <p>This will hold ammo names, damage, blast radius, terrain damage, speed, and wind settings.</p>
+        <button type="submit">Close</button>
+      </form>
+    </dialog>
+
+    <dialog id="inventoryModal" class="modal inventory-modal">
+      <form method="dialog">
+        <h2>Inventory</h2>
+        <p>Click an item to add it to the quickbar. Click it again to remove it.</p>
+        <div id="inventoryList" class="inventory-list"></div>
+        <button type="submit">Close</button>
+      </form>
+    </dialog>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

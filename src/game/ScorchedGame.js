@@ -1,18 +1,20 @@
 import { angleToVector, cannonTip, turnCannon } from '../math/aiming.js';
 import { createProjectile, moveProjectile, projectileHitTank } from '../physics/projectile.js';
+import { createStartingInventory, ITEM_TYPES } from './itemTypes.js';
+import { TANK_MODELS } from './tankModels.js';
 
 // GAME SIZE AND TUNING NUMBERS
 //
 // These constants are the "settings" for the first version of the game.
 // Changing these numbers is usually safer than changing the game loop below.
-const WIDTH = 960;
-const HEIGHT = 540;
-const GROUND_Y = 470;
-const CANNON_LENGTH = 42;
+const WIDTH = 1280;
+const HEIGHT = 720;
+const GROUND_Y = 620;
+const CANNON_LENGTH = 34;
 const CANNON_TURN_SPEED = 55;
 const POWER_STEP = 90;
 const MIN_POWER = 80;
-const MAX_POWER = 420;
+const MAX_POWER = 520;
 const TERRAIN_STEP = 8;
 const IMPACT_DURATION_SECONDS = 0.45;
 const SELF_HIT_GRACE_SECONDS = 0.25;
@@ -38,7 +40,7 @@ export class ScorchedGame {
     // Most drawing commands below start with "ctx.".
     this.context = canvas.getContext('2d');
 
-    // hud contains the HTML elements for status, angle, power, and wind.
+    // hud contains the HTML elements for status, angle, power, and the panels.
     this.hud = hud;
 
     // keys remembers which keyboard keys are currently being held down.
@@ -60,9 +62,22 @@ export class ScorchedGame {
     this.handleKeyUp = (event) => this.onKeyUp(event);
     this.handleVisibilityChange = () => this.onVisibilityChange();
     this.handlePageHide = () => this.stop();
+    this.inventoryChangeHandler = null;
+
+    this.roundNumber = 0;
 
     // Start the first round.
     this.reset();
+  }
+
+  setInventoryChangeHandler(handler) {
+    this.inventoryChangeHandler = handler;
+  }
+
+  notifyInventoryChanged() {
+    if (this.inventoryChangeHandler) {
+      this.inventoryChangeHandler();
+    }
   }
 
   start() {
@@ -129,6 +144,9 @@ export class ScorchedGame {
   }
 
   reset() {
+    this.roundNumber += 1;
+    this.turnNumber = 1;
+
     // terrain is an array of ground heights.
     // Each number says where the ground is at one x position.
     // Right now all values are GROUND_Y, so the battlefield starts flat.
@@ -137,8 +155,8 @@ export class ScorchedGame {
     // Put two tanks on opposite sides of the battlefield.
     // The last number is the starting cannon angle in degrees.
     this.players = [
-      this.createTank('Player 1', 150, '#d45745', 35),
-      this.createTank('Player 2', 810, '#4d8ad8', 145)
+      this.createTank('Player 1', 190, 'p1Custom', 35),
+      this.createTank('Player 2', 1090, 'p2Custom', 145)
     ];
 
     // Player 1 starts because arrays count from 0 in JavaScript.
@@ -161,24 +179,26 @@ export class ScorchedGame {
     this.message = 'Player 1: aim with arrows, fire with Space.';
   }
 
-  createTank(name, x, color, angle) {
+  createTank(name, x, modelId, angle) {
     // This function builds a plain object that stores one tank's state.
     //
     // Tricky bit:
     // x is the middle of the tank.
     // y is the ground point under the tank.
     // The drawing code uses those values to calculate the body and cab.
+    const model = TANK_MODELS[modelId];
+
     return {
       name,
       x,
       y: GROUND_Y,
-      width: 64,
-      height: 24,
-      cabWidth: 28,
-      cabHeight: 18,
+      width: model.collision.width,
+      height: model.collision.height,
+      health: 100,
       angle,
       power: 240,
-      color
+      modelId,
+      inventory: createStartingInventory()
     };
   }
 
@@ -192,6 +212,7 @@ export class ScorchedGame {
     // R resets the whole round immediately.
     if (event.code === 'KeyR') {
       this.reset();
+      this.notifyInventoryChanged();
       return;
     }
 
@@ -295,8 +316,7 @@ export class ScorchedGame {
     // MOVE THE CANNON BALL
     //
     // This sends the current wind number into projectile.js.
-    // Daniel's wind-arrow task does not need to change this line.
-    // This line is here so you can connect the HUD number to the real physics.
+    // The HUD wind arrow shows this same value visually.
     moveProjectile(this.projectile, this.wind, deltaSeconds);
 
     // CHECK FOR A DIRECT HIT
@@ -413,10 +433,25 @@ export class ScorchedGame {
     const tank = this.currentTank();
     const pivot = tankCannonPivot(tank);
     const tip = cannonTip(pivot, tank.angle, CANNON_LENGTH);
+    const selectedItem = this.selectedItem();
+    const selectedItemState = this.selectedItemState();
+
+    if (!selectedItem || selectedItem.kind !== 'ammo') {
+      this.message = `${tank.name} needs an ammo item selected.`;
+      return;
+    }
+
+    if (selectedItemState?.count === 0) {
+      this.message = `${tank.name} is out of ${selectedItem.name}.`;
+      return;
+    }
 
     // Create the cannon ball with the current angle and power.
-    this.projectile = createProjectile(tip, angleToVector(tank.angle), tank.power);
-    this.message = `${tank.name} fired.`;
+    this.projectile = createProjectile(tip, angleToVector(tank.angle), tank.power * selectedItem.speedMultiplier);
+    this.projectile.radius = selectedItem.projectileRadius;
+    this.consumeSelectedItem();
+    this.notifyInventoryChanged();
+    this.message = `${tank.name} fired ${selectedItem.name}.`;
   }
 
   nextTurn() {
@@ -424,10 +459,12 @@ export class ScorchedGame {
     // 1 - 0 becomes 1. 1 - 1 becomes 0.
     // That swaps back and forth between the players.
     this.currentPlayerIndex = 1 - this.currentPlayerIndex;
+    this.turnNumber += 1;
 
     // Each new turn gets new wind, like classic artillery games.
     this.wind = randomWind();
     this.message = `${this.currentTank().name}'s turn.`;
+    this.notifyInventoryChanged();
   }
 
   currentTank() {
@@ -438,6 +475,112 @@ export class ScorchedGame {
   otherTank() {
     // Return the tank whose turn it is NOT.
     return this.players[1 - this.currentPlayerIndex];
+  }
+
+  currentInventory() {
+    return this.currentTank().inventory;
+  }
+
+  selectedItemId() {
+    const inventory = this.currentInventory();
+    return inventory.quickbar[inventory.selectedSlot] || null;
+  }
+
+  selectedItem() {
+    const itemId = this.selectedItemId();
+    return itemId ? ITEM_TYPES[itemId] : null;
+  }
+
+  selectedItemState() {
+    const itemId = this.selectedItemId();
+    return itemId ? this.currentInventory().items[itemId] : null;
+  }
+
+  quickbarItems() {
+    const inventory = this.currentInventory();
+
+    return inventory.quickbar.map((itemId, index) => ({
+      index,
+      itemId,
+      item: itemId ? ITEM_TYPES[itemId] : null,
+      isSelected: index === inventory.selectedSlot
+    }));
+  }
+
+  inventoryItems() {
+    const inventory = this.currentInventory();
+
+    return Object.entries(inventory.items).map(([itemId, itemState]) => ({
+      itemId,
+      item: ITEM_TYPES[itemId],
+      count: itemState.count,
+      isOnQuickbar: inventory.quickbar.includes(itemId)
+    }));
+  }
+
+  selectQuickbarSlot(slotIndex) {
+    const inventory = this.currentInventory();
+
+    if (slotIndex < 0 || slotIndex >= inventory.quickbar.length || !inventory.quickbar[slotIndex]) {
+      return;
+    }
+
+    inventory.selectedSlot = slotIndex;
+    this.updateHud();
+    this.notifyInventoryChanged();
+  }
+
+  toggleQuickbarItem(itemId) {
+    const inventory = this.currentInventory();
+    const existingIndex = inventory.quickbar.indexOf(itemId);
+
+    if (existingIndex !== -1) {
+      inventory.quickbar[existingIndex] = null;
+
+      if (inventory.selectedSlot === existingIndex) {
+        inventory.selectedSlot = firstFilledQuickbarSlot(inventory.quickbar);
+      }
+
+      this.updateHud();
+      this.notifyInventoryChanged();
+      return;
+    }
+
+    const emptyIndex = inventory.quickbar.indexOf(null);
+
+    if (emptyIndex === -1 || !inventory.items[itemId]) {
+      return;
+    }
+
+    inventory.quickbar[emptyIndex] = itemId;
+    this.updateHud();
+    this.notifyInventoryChanged();
+  }
+
+  consumeSelectedItem() {
+    const inventory = this.currentInventory();
+    const itemId = this.selectedItemId();
+    const itemState = this.selectedItemState();
+
+    if (!itemId || !itemState || itemState.count === Infinity) {
+      return;
+    }
+
+    itemState.count -= 1;
+
+    if (itemState.count > 0) {
+      return;
+    }
+
+    delete inventory.items[itemId];
+
+    for (let index = 0; index < inventory.quickbar.length; index++) {
+      if (inventory.quickbar[index] === itemId) {
+        inventory.quickbar[index] = null;
+      }
+    }
+
+    inventory.selectedSlot = firstFilledQuickbarSlot(inventory.quickbar);
   }
 
   draw() {
@@ -499,25 +642,21 @@ export class ScorchedGame {
   }
 
   drawTank(ctx, tank) {
-    // CALCULATE TANK PART POSITIONS
+    // DRAW ONE TANK MODEL
     //
     // Tricky bit:
     // Canvas x grows to the right.
     // Canvas y grows DOWN, not up.
     // So "higher on screen" means a smaller y number.
-    const bodyLeft = tank.x - tank.width / 2;
-    const bodyTop = tank.y - tank.height;
-    const cabLeft = tank.x - tank.cabWidth / 2;
-    const cabTop = bodyTop - tank.cabHeight;
+    const model = TANK_MODELS[tank.modelId];
 
     // The cannon is drawn as a thick line from pivot to tip.
     const pivot = tankCannonPivot(tank);
     const tip = cannonTip(pivot, tank.angle, CANNON_LENGTH);
 
-    // Draw tank body and cab.
-    ctx.fillStyle = tank.color;
-    ctx.fillRect(bodyLeft, bodyTop, tank.width, tank.height);
-    ctx.fillRect(cabLeft, cabTop, tank.cabWidth, tank.cabHeight);
+    // Draw tank body and cab from graph-paper polygon points.
+    drawPolygon(ctx, tank.x, tank.y, model.body, model.color);
+    drawPolygon(ctx, tank.x, tank.y, model.cab, model.accent);
 
     // Draw cannon barrel.
     ctx.strokeStyle = '#22252d';
@@ -559,21 +698,43 @@ export class ScorchedGame {
     // The HUD is normal HTML, not canvas drawing.
     // textContent changes what the player sees in each HUD line.
     const tank = this.currentTank();
-    this.hud.status.textContent = this.message;
-    this.hud.angle.textContent = `${Math.round(tank.angle)} deg`;
-    this.hud.power.textContent = Math.round(tank.power).toString();
+    const model = TANK_MODELS[tank.modelId];
+    setText(this.hud.roundNumber, `${this.roundNumber}`);
+    setText(this.hud.turnNumber, `${this.turnNumber}`);
+    setText(this.hud.status, this.message);
+    setText(this.hud.angle, `${Math.round(tank.angle)} deg`);
+    setText(this.hud.power, Math.round(tank.power).toString());
+    setText(this.hud.playerName, tank.name);
+    setText(this.hud.tankModel, model.name);
+    setText(this.hud.health, `${tank.health}`);
 
-    // Show wind direction with an arrow.
-    // Negative wind points left. Positive wind points right.
-    let windArrow = '-';
-
-    if (this.wind < 0) {
-      windArrow = '<-';
-    } else if (this.wind > 0) {
-      windArrow = '->';
+    if (this.hud.playerPanel) {
+      setStyleProperty(this.hud.playerPanel, '--player-color', model.color);
+      setStyleProperty(this.hud.playerPanel, '--player-glow', hexToRgba(model.color, 0.24));
     }
 
-    this.hud.wind.textContent = `${windArrow} ${Math.abs(this.wind).toFixed(1)}`;
+    if (this.canvas.style) {
+      setStyleProperty(this.canvas, '--active-player-color', model.color);
+      setStyleProperty(this.canvas, '--active-player-glow', hexToRgba(model.color, 0.32));
+    }
+
+    if (this.hud.aimGauge) {
+      // The gauge itself is HTML/CSS. JavaScript only updates a few CSS
+      // variables, then the browser handles the visual rotation and fill.
+      const powerPercent = (tank.power - MIN_POWER) / (MAX_POWER - MIN_POWER);
+      const windPercent = Math.min(Math.abs(this.wind) / 35, 1);
+      const windDirection = Math.sign(this.wind);
+      setStyleProperty(this.hud.aimGauge, '--aim-angle', `${tank.angle}deg`);
+      setStyleProperty(this.hud.aimGauge, '--power-percent', powerPercent);
+      setStyleProperty(this.hud.aimGauge, '--power-color', powerColor(powerPercent));
+      setStyleProperty(this.hud.aimGauge, '--wind-strength', windPercent);
+      setStyleProperty(this.hud.aimGauge, '--wind-arrow-rotation', windDirection < 0 ? '180deg' : '0deg');
+      setTitle(this.hud.aimGauge, `Angle ${Math.round(tank.angle)} deg | Power ${Math.round(tank.power)} | Wind ${this.wind.toFixed(1)}`);
+    }
+
+    if (this.hud.windValue) {
+      setText(this.hud.windValue, `${Math.abs(this.wind).toFixed(1)} mph`);
+    }
   }
 
   groundYAt(x) {
@@ -585,7 +746,7 @@ export class ScorchedGame {
   }
 
   deformTerrainAt(x, y) {
-    // CRATER SCAFFOLD
+    // DIG A CRATER INTO THE TERRAIN
     //
     // This function is called every time a shot hits the ground.
     // It loops over every terrain point and asks helper functions:
@@ -594,8 +755,8 @@ export class ScorchedGame {
     // - is it inside the crater?
     // - how deep should this point move?
     //
-    // Daniel's next steps are in the helper functions below this class.
-    void y;
+    // y is the ground height at the impact. We do not need it yet,
+    // but it may be useful later for bigger explosions or particles.
 
     for (let index = 0; index < this.terrain.length; index++) {
       const pointX = terrainIndexToX(index);
@@ -604,9 +765,8 @@ export class ScorchedGame {
       if (isInsideCrater(distance, CRATER_RADIUS)) {
         const depth = craterDepthAt(distance, CRATER_RADIUS, CRATER_DEPTH);
 
-        // INTENTIONAL BUG FOR DANIEL:
-        // This subtracts, which makes the ground move UP into a hill.
-        // A crater should move the ground DOWN.
+        // Canvas y gets bigger as it goes down the screen.
+        // Adding depth digs the ground downward.
         this.terrain[index] = clampTerrainY(this.terrain[index] + depth);
       }
     }
@@ -630,31 +790,15 @@ function distanceBetween(a, b) {
 }
 
 function isInsideCrater(distance, craterRadius) {
-  // DANIEL CRATER STEP 1:
-  //
   // This function decides whether one terrain point is close enough
   // to the hit to be part of the crater.
-  //
-  // BUG TO FIX:
-  // Returning false means "no points are inside the crater."
-  // That makes no crater appear.
-  //
-  // Fix it so the function returns true when distance is less than craterRadius.
-  void distance;
-  void craterRadius;
   return distance < craterRadius;
 }
 
 function craterDepthAt(distance, craterRadius, maxDepth) {
-  // DANIEL CRATER STEP 3:
+  // Make the crater deeper in the middle and shallower at the edges.
   //
-  // For the first version, every point inside the crater moves by maxDepth.
-  // That makes a blocky crater, which is fine.
-  //
-  // Later, Daniel can use distance and craterRadius here to make the crater
-  // deeper in the middle and shallower at the edges.
-  void distance;
-  void craterRadius;
+  // closeness is near 1 at the center and near 0 at the edge.
   const closeness = 1 - distance / craterRadius;
   return maxDepth * closeness;
 }
@@ -665,13 +809,78 @@ function clampTerrainY(y) {
   return Math.max(MIN_TERRAIN_Y, Math.min(MAX_TERRAIN_Y, y));
 }
 
+function firstFilledQuickbarSlot(quickbar) {
+  const filledIndex = quickbar.findIndex((itemId) => itemId !== null);
+  return filledIndex === -1 ? 0 : filledIndex;
+}
+
+function setText(element, text) {
+  // updateHud runs every frame, even when nothing visible changed.
+  // Checking first avoids asking the browser to redo text layout needlessly.
+  if (element && element.textContent !== text) {
+    element.textContent = text;
+  }
+}
+
+function setTitle(element, title) {
+  // The title is the hover tooltip for exact aim/wind values.
+  // Like textContent, changing it every frame would be wasted work.
+  if (element && element.title !== title) {
+    element.title = title;
+  }
+}
+
+function setStyleProperty(element, propertyName, value) {
+  // CSS variables let the browser animate the HUD for us.
+  // This helper keeps those style writes from happening when the value is
+  // already current.
+  if (element && element.style.getPropertyValue(propertyName) !== String(value)) {
+    element.style.setProperty(propertyName, value);
+  }
+}
+
+function hexToRgba(hexColor, alpha) {
+  const red = parseInt(hexColor.slice(1, 3), 16);
+  const green = parseInt(hexColor.slice(3, 5), 16);
+  const blue = parseInt(hexColor.slice(5, 7), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function powerColor(powerPercent) {
+  // Low power is calmer green. High power moves toward hot orange.
+  const hue = 125 - powerPercent * 90;
+  return `hsl(${hue}, 85%, 58%)`;
+}
+
 function tankCannonPivot(tank) {
   // The pivot is the point where the cannon rotates.
-  // For now, it sits at the top center of the cab.
+  // The tank model decides where the cannon sits.
+  const model = TANK_MODELS[tank.modelId];
   return {
-    x: tank.x,
-    y: tank.y - tank.height - tank.cabHeight
+    x: tank.x + model.cannonPivot.x,
+    y: tank.y + model.cannonPivot.y
   };
+}
+
+function drawPolygon(ctx, originX, originY, points, fillStyle) {
+  // Draw a shape from graph-paper points.
+  //
+  // originX/originY is the tank's ground point.
+  // Each point is added to that origin.
+  if (points.length === 0) {
+    return;
+  }
+
+  ctx.fillStyle = fillStyle;
+  ctx.beginPath();
+  ctx.moveTo(originX + points[0].x, originY + points[0].y);
+
+  for (let index = 1; index < points.length; index++) {
+    ctx.lineTo(originX + points[index].x, originY + points[index].y);
+  }
+
+  ctx.closePath();
+  ctx.fill();
 }
 
 function randomWind() {

@@ -5,193 +5,172 @@ This file is the project map and task list. Start here when deciding what to cha
 ## Important Files
 
 - [README.md](README.md): explains how to run the game and the current controls.
-- [index.html](index.html): the browser page. It creates the canvas and the sidebar text.
-- [src/main.js](src/main.js): starts the game by creating a `ScorchedGame`.
-- [src/game/ScorchedGame.js](src/game/ScorchedGame.js): the main game file. It handles keyboard input, turns, drawing tanks, firing, impact animations, terrain, and the HUD.
-- [src/math/aiming.js](src/math/aiming.js): cannon angle math. This is a good Daniel file.
-- [src/physics/projectile.js](src/physics/projectile.js): projectile movement, wind, gravity, and simple tank hits. This is another good Daniel file.
+- [index.html](index.html): the browser page. It creates the canvas, game field, and HUD panels.
+- [src/main.js](src/main.js): starts the game and connects HTML HUD elements to JavaScript.
+- [src/game/ScorchedGame.js](src/game/ScorchedGame.js): the main game file. It handles keyboard input, turns, drawing, firing, impact animations, terrain, and the HUD.
+- [src/game/tankModels.js](src/game/tankModels.js): tank shapes built from graph-paper polygon points. This is the next Daniel file.
+- [src/game/itemTypes.js](src/game/itemTypes.js): inventory item data, including ammo and future tools.
+- [src/math/aiming.js](src/math/aiming.js): cannon angle math.
+- [src/physics/projectile.js](src/physics/projectile.js): projectile movement, wind, gravity, and simple tank hits.
 - [src/styles.css](src/styles.css): page layout and visual styling.
 - [tools/dev-server.mjs](tools/dev-server.mjs): tiny local web server used by `npm.cmd run dev`.
-- [test/aiming.test.js](test/aiming.test.js): small tests for the aiming math.
-- [test/projectile.test.js](test/projectile.test.js): small tests for projectile age and self-hit behavior.
-- [docs/architecture.md](docs/architecture.md): notes about how the code is organized.
-- [docs/daniel-tasks.md](docs/daniel-tasks.md): future Daniel-sized programming tasks.
-- [docs/milestones.md](docs/milestones.md): bigger game milestones.
-- [docs/session-notes.md](docs/session-notes.md): notes from project setup and planning.
 
-## Done: Daniel TODO 1: Fix And Add Control Keys
+## Done So Far
 
-Daniel updated the controls so left/right rotate the cannon, up/down change power, and WASD also works.
+- Daniel fixed the controls and added WASD.
+- Daniel added wind direction arrows.
+- Daniel added cannonball hit animations.
+- Daniel added self-hit.
+- Daniel made cannonballs dig sloped craters.
+- Grown-up scaffold added a bigger battlefield, smaller polygon tanks, current-turn UI, setup/admin panels, tank model data, and ammo data.
+- Grown-up UI pass changed the bottom ammo bar into an inventory quickbar with an inventory window, add/remove behavior, and item tooltips.
 
-## Done: Daniel TODO 2: Add A Wind Direction Arrow
+## Daniel TODO 6: Design Two Tanks On Graph Paper
 
-Daniel updated the wind HUD so the number includes a direction arrow. Negative wind shows `<-`, positive wind shows `->`, and the strength is shown as a positive number.
+The file to edit after drawing is:
 
-## Done: Daniel TODO 3: Add Cannonball Hit Animations
-
-Daniel added visible hit animations in `drawImpact(ctx, impact)`. Tank hits and ground hits now use different circle sizes and colors.
-
-## Done: Daniel TODO 4: Add Self-Hit
-
-Daniel updated `findProjectileTankHit()` so shots can hit the firing player's own tank after the cannonball has been flying longer than `SELF_HIT_GRACE_SECONDS`.
-
-## Daniel TODO 5: Make Cannon Balls Dig Craters
-
-The file to edit is:
-
-- [src/game/ScorchedGame.js](src/game/ScorchedGame.js)
-
-The crater code is split into small helper functions near the bottom of the file.
-
-The grown-up code already loops through the terrain points in:
-
-```js
-deformTerrainAt(x, y)
-```
-
-Daniel does not need to write that loop yet.
-
-Instead, fix one small helper function at a time.
-
-## Daniel TODO 5A: Make Any Crater Change Happen
-
-Find this helper function:
-
-```js
-function isInsideCrater(distance, craterRadius)
-```
-
-Right now it always says:
-
-```js
-return false;
-```
-
-That means no terrain points are inside the crater, so nothing changes.
+- [src/game/tankModels.js](src/game/tankModels.js)
 
 ### Goal
 
-Change it so a terrain point is inside the crater when `distance` is less than `craterRadius`.
+Design two different tanks:
 
-The fixed line should use:
+- one for Player 1
+- one for Player 2
 
-```js
-distance < craterRadius
+Each tank should be made from straight lines connecting dots.
+
+### Step 1: Draw The Axes
+
+On graph paper, draw a point called the tank's ground point.
+
+Use this as the center-bottom of the tank:
+
+```text
+(0, 0)
 ```
 
-### Test It
+Then draw:
+
+- x goes left and right
+- y goes up and down
+
+Important:
+
+- right is positive x
+- left is negative x
+- down is positive y
+- up is negative y
+
+So a point above the ground might be:
+
+```text
+(4, -10)
+```
+
+### Step 2: Draw The Body Shape
+
+Draw a tank body with straight lines.
+
+Keep it small:
+
+- left side around `x = -24`
+- right side around `x = 24`
+- bottom around `y = 0`
+- top around `y = -12` to `y = -20`
+
+Mark each corner dot around the outside of the body.
+
+Then write the dots in order around the shape.
+
+Example:
+
+```js
+body: [
+  { x: -20, y: 0 },
+  { x: -18, y: -12 },
+  { x: 14, y: -12 },
+  { x: 22, y: 0 }
+]
+```
+
+### Step 3: Draw The Cab Shape
+
+Draw a smaller shape on top of the body.
+
+Example:
+
+```js
+cab: [
+  { x: -8, y: -12 },
+  { x: -4, y: -22 },
+  { x: 9, y: -22 },
+  { x: 13, y: -12 }
+]
+```
+
+### Step 4: Pick The Cannon Pivot
+
+The cannon pivot is the dot where the cannon rotates.
+
+It should usually be on top of the cab.
+
+Example:
+
+```js
+cannonPivot: { x: 5, y: -22 }
+```
+
+### Step 5: Put Your Points Into The Code
+
+Open [src/game/tankModels.js](src/game/tankModels.js).
+
+Find:
+
+```js
+p1Custom
+```
+
+Replace the starter `body`, `cab`, and `cannonPivot` points with Player 1's design.
+
+Then find:
+
+```js
+p2Custom
+```
+
+Replace the starter points with Player 2's design.
+
+### Step 6: Test By Refreshing
 
 Refresh the browser page.
 
-Fire at the ground.
+Check:
 
-Something should happen to the ground near the hit.
+- Player 1 and Player 2 look different.
+- The cannon starts on top of the cab.
+- The tank is not too huge.
+- The tank is not floating far above the ground.
+- The tank is not buried too far below the ground.
 
-It might look wrong at first. That is okay. That is the next task.
+### Step 7: Fix The Collision Box If Needed
 
-## Daniel TODO 5B: Fix The Hill Bug
-
-After TODO 5A, the cannonball may make a hill instead of a crater.
-
-That is an intentional bug.
-
-Find this line inside `deformTerrainAt(x, y)`:
+Each tank model has:
 
 ```js
-this.terrain[index] -= depth;
+collision: { width: 44, height: 24 }
 ```
 
-### Goal
+This is still a simple rectangle used for hit detection.
 
-Change the sign so the ground moves down instead of up.
+If your tank is wider, make `width` bigger.
 
-Remember:
+If your tank is taller, make `height` bigger.
 
-- canvas y gets bigger as it goes lower
-- adding to terrain digs downward
-- subtracting from terrain pushes upward
+## Future Grown-Up Work
 
-### Test It
-
-Refresh the browser page.
-
-Fire at the ground.
-
-The ground should now dig downward where the shot lands.
-
-## Daniel TODO 5C: Tune The Crater Size
-
-Find these constants near the top of `src/game/ScorchedGame.js`:
-
-```js
-const CRATER_RADIUS = 36;
-const CRATER_DEPTH = 22;
-```
-
-### Goal
-
-Try changing the numbers and predict what will happen.
-
-Questions:
-
-- What happens if `CRATER_RADIUS` is bigger?
-- What happens if `CRATER_RADIUS` is smaller?
-- What happens if `CRATER_DEPTH` is bigger?
-- What happens if `CRATER_DEPTH` is smaller?
-
-### Test It
-
-Refresh the browser page after each change.
-
-Fire at the ground and compare the crater.
-
-## Daniel TODO 5D: Make The Crater Rounder
-
-Important ideas:
-
-- A blocky crater uses the same depth everywhere.
-- A rounder crater is deeper in the middle.
-- A rounder crater is shallower near the edges.
-
-Find this helper function:
-
-```js
-function craterDepthAt(distance, craterRadius, maxDepth)
-```
-
-Right now it returns the same depth every time:
-
-```js
-return maxDepth;
-```
-
-### Goal
-
-Use `distance` to make the depth smaller near the edge.
-
-```js
-const closeness = 1 - distance / craterRadius;
-return maxDepth * closeness;
-```
-
-That means:
-
-- distance near `0`: deep crater
-- distance near `craterRadius`: shallow edge
-
-### Test It
-
-Refresh the browser page.
-
-Fire at the ground.
-
-The crater should look less square and more sloped.
-
-## Bonus: What The Helper Functions Mean
-
-These helper functions each do one small job:
-
-- `terrainIndexToX(index)`: turns an array spot into a screen x position.
-- `distanceBetween(a, b)`: measures how far apart two x positions are.
-- `isInsideCrater(distance, craterRadius)`: decides whether a point gets changed.
-- `craterDepthAt(distance, craterRadius, maxDepth)`: decides how much a point changes.
+- Make the setup window actually choose player names and tank models.
+- Make the ammo panel actually switch weapons.
+- Make the ammo admin panel edit ammo properties.
+- Add health and blast-radius damage.
+- Make tanks settle onto cratered ground.

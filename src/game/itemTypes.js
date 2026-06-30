@@ -1,0 +1,97 @@
+// ITEM TYPES
+//
+// Items are things a player can carry. Some items are ammo and can be fired.
+// Later, other items can repair tanks, create shields, scan wind, and so on.
+
+export const ITEM_TYPES = {
+  basicShot: {
+    name: 'Basic Shot',
+    kind: 'ammo',
+    icon: 'B',
+    count: Infinity,
+    projectileRadius: 4,
+    damage: 20,
+    blastRadius: 40,
+    terrainDamage: 1,
+    speedMultiplier: 1,
+    windMultiplier: 1,
+    description: 'A reliable cannonball with normal speed and blast size.'
+  },
+  heavyShell: {
+    name: 'Heavy Shell',
+    kind: 'ammo',
+    icon: 'H',
+    count: 3,
+    projectileRadius: 6,
+    damage: 35,
+    blastRadius: 58,
+    terrainDamage: 1.4,
+    speedMultiplier: 0.85,
+    windMultiplier: 0.8,
+    description: 'A slower, heavier shot with a bigger blast.'
+  },
+  digger: {
+    name: 'Digger',
+    kind: 'ammo',
+    icon: 'D',
+    count: 2,
+    projectileRadius: 4,
+    damage: 8,
+    blastRadius: 34,
+    terrainDamage: 2,
+    speedMultiplier: 1,
+    windMultiplier: 1.1,
+    description: 'A terrain-focused shot for making deeper craters.'
+  },
+  repairKit: {
+    name: 'Repair Kit',
+    kind: 'tool',
+    icon: '+',
+    count: 1,
+    healAmount: 25,
+    description: 'Future item: repair your tank instead of firing.'
+  },
+  windGauge: {
+    name: 'Wind Gauge',
+    kind: 'tool',
+    icon: 'W',
+    count: 1,
+    description: 'Future item: inspect wind before taking a shot.'
+  }
+};
+
+export const STARTING_INVENTORY = {
+  items: {
+    basicShot: { count: Infinity },
+    heavyShell: { count: 3 },
+    digger: { count: 2 },
+    repairKit: { count: 1 },
+    windGauge: { count: 1 }
+  },
+  quickbar: ['basicShot', 'heavyShell', 'digger', null],
+  selectedSlot: 0
+};
+
+export function createStartingInventory() {
+  return {
+    items: Object.fromEntries(
+      Object.entries(STARTING_INVENTORY.items).map(([itemId, item]) => [itemId, { ...item }])
+    ),
+    quickbar: [...STARTING_INVENTORY.quickbar],
+    selectedSlot: STARTING_INVENTORY.selectedSlot
+  };
+}
+
+export function describeItem(itemId) {
+  const item = ITEM_TYPES[itemId];
+
+  if (!item) {
+    return 'Empty slot';
+  }
+
+  if (item.kind === 'ammo') {
+    return `${item.name}: damage ${item.damage}, blast ${item.blastRadius}, terrain ${item.terrainDamage}`;
+  }
+
+  return `${item.name}: ${item.description}`;
+}
