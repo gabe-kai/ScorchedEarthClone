@@ -1,6 +1,7 @@
 import { ScorchedGame } from './game/ScorchedGame.js';
 import { describeItem, ITEM_TYPES } from './game/itemTypes.js';
 import { TANK_MODELS } from './game/tankModels.js';
+import { MultiplayerClient } from './network/multiplayerClient.js';
 
 const canvas = document.querySelector('#game');
 const hud = {
@@ -39,7 +40,15 @@ const game = new ScorchedGame(canvas, hud);
 window.scorchedGame = game;
 game.start();
 
-const newGameModal = document.querySelector('#newGameModal');
+const setupView = document.querySelector('#setupView');
+const gameView = document.querySelector('#gameView');
+const showSetupButton = document.querySelector('#showSetupButton');
+const setupModeTabs = document.querySelectorAll('[data-setup-mode]');
+const setupPanels = document.querySelectorAll('[data-setup-panel]');
+const setupLanSections = document.querySelectorAll('[data-setup-lan-section]');
+const setupNetworkSections = document.querySelectorAll('[data-setup-network-section]');
+const setupLocalSections = document.querySelectorAll('[data-setup-local-section]');
+const setupModeNote = document.querySelector('#setupModeNote');
 const startNewGameButton = document.querySelector('#startNewGameButton');
 const nextRoundButton = document.querySelector('#nextRoundButton');
 const matchRoundsInput = document.querySelector('#matchRoundsInput');
@@ -50,6 +59,26 @@ const waterRiseInput = document.querySelector('#waterRiseInput');
 const quickbar = document.querySelector('#quickbar');
 const inventoryModal = document.querySelector('#inventoryModal');
 const inventoryList = document.querySelector('#inventoryList');
+const multiplayerElements = {
+  status: document.querySelector('#multiplayerStatus'),
+  hostAddress: document.querySelector('#multiplayerHostAddress'),
+  roomHint: document.querySelector('#multiplayerRoomHint'),
+  nameInput: document.querySelector('#multiplayerNameInput'),
+  tankInput: document.querySelector('#multiplayerTankInput'),
+  colorInput: document.querySelector('#multiplayerColorInput'),
+  setupMode: () => setupMode,
+  createButton: document.querySelector('#createRoomButton'),
+  joinButton: document.querySelector('#joinRoomButton'),
+  leaveButton: document.querySelector('#leaveRoomButton'),
+  playerSlotsInput: document.querySelector('#multiplayerPlayerSlotsInput'),
+  aiSlotsInput: document.querySelector('#multiplayerAiSlotsInput'),
+  applySettingsButton: document.querySelector('#multiplayerApplySettingsButton'),
+  slotList: document.querySelector('#multiplayerSlotList'),
+  readyButton: document.querySelector('#multiplayerReadyButton'),
+  pauseButton: document.querySelector('#gamePauseButton'),
+  startButton: document.querySelector('#multiplayerStartButton'),
+  copyHostAddressButton: document.querySelector('#copyHostAddressButton')
+};
 const playerFields = {
   oneName: document.querySelector('#playerOneNameInput'),
   oneTank: document.querySelector('#playerOneTankInput'),
@@ -115,6 +144,8 @@ let ammoDesignerItems = createAmmoDesignerItems(savedDesignerState);
 let selectedAmmoDesignerId = savedDesignerState?.selectedAmmoDesignerId || ammoDesignerItems[0]?.id || null;
 let playerSetup = normalizePlayerSetup(loadPlayerSetup());
 let hoveredInventoryItemId = null;
+let setupMode = 'local';
+let multiplayerClient = null;
 
 if (!tankDesignerItems.some((item) => item.id === selectedTankDesignerId)) {
   selectedTankDesignerId = tankDesignerItems[0]?.id || null;
@@ -153,6 +184,11 @@ function openInventory() {
 
 function startNewGame() {
   updatePlayerSetupFromFields();
+  startConfiguredGame(playerSetup);
+}
+
+function startConfiguredGame(setup) {
+  playerSetup = resolvePlayerSetupTankIds(setup);
   game.startMatch(playerSetup, Number(matchRoundsInput.value || 1), landscapeInput.value, {
     enabled: waterEnabledInput.checked,
     levelPercent: Number(waterLevelInput.value || 0),
@@ -160,10 +196,7 @@ function startNewGame() {
   });
   savePlayerSetup();
   renderQuickbar();
-
-  if (newGameModal.open) {
-    newGameModal.close();
-  }
+  showGameView();
 }
 
 function startNextRound() {
@@ -172,12 +205,10 @@ function startNextRound() {
   game.updateHud();
   renderQuickbar();
 
-  if (newGameModal.open) {
-    newGameModal.close();
-  }
+  showGameView();
 }
 
-function renderNewGameModal() {
+function renderGameSetup() {
   renderPlayerSetup();
   landscapeInput.value = game.landscapeMode;
   waterEnabledInput.checked = game.waterEnabled;
@@ -187,8 +218,58 @@ function renderNewGameModal() {
   nextRoundButton.hidden = !canContinueMatch;
 }
 
+function showGameView() {
+  // After clicking a setup button, focus can stay on that button even though
+  // the battlefield is now visible. Blur it so Space/arrows go to the game.
+  document.activeElement?.blur?.();
+  setupView.classList.add('is-hidden');
+  gameView.classList.remove('is-hidden');
+}
+
+function showSetupView() {
+  renderGameSetup();
+  setupView.classList.remove('is-hidden');
+  gameView.classList.add('is-hidden');
+}
+
+function selectSetupMode(mode) {
+  setupMode = mode;
+  setupModeTabs.forEach((tab) => {
+    tab.classList.toggle('is-selected', tab.dataset.setupMode === mode);
+  });
+  setupPanels.forEach((panel) => {
+    panel.classList.toggle('is-hidden', panel.dataset.setupPanel !== mode);
+  });
+  setupLanSections.forEach((section) => {
+    section.classList.toggle('is-hidden', mode === 'local');
+  });
+  setupNetworkSections.forEach((section) => {
+    section.classList.toggle('is-hidden', mode === 'local');
+  });
+  setupLocalSections.forEach((section) => {
+    section.classList.toggle('is-hidden', mode !== 'local');
+  });
+
+  startNewGameButton.classList.toggle('is-hidden', mode !== 'local');
+  multiplayerElements.startButton.classList.toggle('is-hidden', mode !== 'host');
+  setupModeNote.textContent = mode === 'host'
+    ? 'LAN room with future 2-6 player support'
+    : mode === 'join'
+      ? 'Join a host room on this network'
+      : 'Local hot-seat game';
+
+  if (mode === 'host' && multiplayerClient) {
+    multiplayerClient.ensureHosting();
+  }
+
+  if (multiplayerClient) {
+    multiplayerClient.render();
+  }
+}
+
 function syncWaterDefaultsForLandscape() {
   if (landscapeInput.value !== 'risingSea') {
+    multiplayerClient?.publishSettings();
     return;
   }
 
@@ -197,6 +278,30 @@ function syncWaterDefaultsForLandscape() {
   if (Number(waterRiseInput.value || 0) === 0) {
     waterRiseInput.value = '6';
   }
+
+  multiplayerClient?.publishSettings();
+}
+
+function currentMatchSettings() {
+  return {
+    matchRounds: Number(matchRoundsInput.value || 1),
+    landscapeMode: landscapeInput.value,
+    waterEnabled: waterEnabledInput.checked,
+    waterLevelPercent: Number(waterLevelInput.value || 0),
+    waterRisePerShot: Number(waterRiseInput.value || 0)
+  };
+}
+
+function applyNetworkMatchSettings(settings) {
+  if (!settings) {
+    return;
+  }
+
+  matchRoundsInput.value = String(settings.matchRounds ?? 3);
+  landscapeInput.value = settings.landscapeMode || 'cycle';
+  waterEnabledInput.checked = Boolean(settings.waterEnabled);
+  waterLevelInput.value = String(settings.waterLevelPercent ?? 18);
+  waterRiseInput.value = String(settings.waterRisePerShot ?? 0);
 }
 
 function openCanvasCenteredModal(modal) {
@@ -205,12 +310,14 @@ function openCanvasCenteredModal(modal) {
 }
 
 function centerModalOnCanvas(modal) {
-  // The canvas is not centered in the whole browser window because the HUD
-  // sidebar sits on the right. Use the canvas rectangle so every modal opens
-  // over the play field instead.
-  const canvasRect = canvas.getBoundingClientRect();
-  modal.style.setProperty('--modal-left', `${canvasRect.left + canvasRect.width / 2}px`);
-  modal.style.setProperty('--modal-top', `${canvasRect.top + canvasRect.height / 2}px`);
+  // During play, center modals over the canvas. During setup, the canvas is
+  // hidden, so center over the setup shell instead.
+  const anchor = gameView.classList.contains('is-hidden')
+    ? document.querySelector('.setup-shell')
+    : canvas;
+  const anchorRect = anchor.getBoundingClientRect();
+  modal.style.setProperty('--modal-left', `${anchorRect.left + anchorRect.width / 2}px`);
+  modal.style.setProperty('--modal-top', `${anchorRect.top + anchorRect.height / 2}px`);
 }
 
 function centerOpenModalsOnCanvas() {
@@ -375,6 +482,7 @@ function renderPlayerSetup() {
   playerFields.twoColor.value = playerSetup[1].color;
   renderTankSelect(playerFields.oneTank, playerSetup[0].modelId);
   renderTankSelect(playerFields.twoTank, playerSetup[1].modelId);
+  renderTankSelect(multiplayerElements.tankInput, multiplayerElements.tankInput.value || playerSetup[0].modelId);
 }
 
 function renderTankSelect(select, selectedModelId) {
@@ -406,7 +514,8 @@ function updatePlayerSetupFromFields() {
   savePlayerSetup();
 }
 
-function applyTankLibraryToGame(forcePlayerSetup = false) {
+function applyTankLibraryToGame(forcePlayerSetup = false, options = {}) {
+  const { publish = true } = options;
   game.setTankModels(buildGameTankModels());
   const resolvedSetup = resolvePlayerSetupTankIds(playerSetup);
   const setupChanged = playerSetup.some((player, index) => (
@@ -421,16 +530,60 @@ function applyTankLibraryToGame(forcePlayerSetup = false) {
     game.setPlayerSetup(playerSetup);
   }
 
-  if (newGameModal.open) {
-    renderNewGameModal();
-  }
-
+  renderPlayerSetup();
   renderQuickbar();
+
+  if (publish) {
+    multiplayerClient?.publishLibrary();
+  }
 }
 
-function applyItemLibraryToGame() {
+function applyItemLibraryToGame(options = {}) {
+  const { publish = true } = options;
   game.setItemTypes(buildGameItemTypes());
   renderQuickbar();
+
+  if (publish) {
+    multiplayerClient?.publishLibrary();
+  }
+}
+
+function currentDesignerLibrary() {
+  return {
+    tankDesignerItems,
+    selectedTankDesignerId,
+    ammoDesignerItems,
+    selectedAmmoDesignerId
+  };
+}
+
+function applyNetworkDesignerLibrary(library) {
+  if (!library) {
+    return;
+  }
+
+  if (Array.isArray(library.tankDesignerItems) && library.tankDesignerItems.length > 0) {
+    tankDesignerItems = library.tankDesignerItems.map(normalizeTankDesignerItem);
+    selectedTankDesignerId = library.selectedTankDesignerId;
+
+    if (!tankDesignerItems.some((item) => item.id === selectedTankDesignerId)) {
+      selectedTankDesignerId = tankDesignerItems[0]?.id || null;
+    }
+  }
+
+  if (Array.isArray(library.ammoDesignerItems) && library.ammoDesignerItems.length > 0) {
+    ammoDesignerItems = library.ammoDesignerItems.map(normalizeAmmoDesignerItem);
+    selectedAmmoDesignerId = library.selectedAmmoDesignerId;
+
+    if (!ammoDesignerItems.some((item) => item.id === selectedAmmoDesignerId)) {
+      selectedAmmoDesignerId = ammoDesignerItems[0]?.id || null;
+    }
+  }
+
+  applyTankLibraryToGame(false, { publish: false });
+  applyItemLibraryToGame({ publish: false });
+  renderTankDesigner();
+  renderAmmoDesigner();
 }
 
 function buildGameTankModels() {
@@ -1080,9 +1233,35 @@ renderQuickbar();
 renderTankDesigner();
 renderAmmoDesigner();
 
+multiplayerClient = new MultiplayerClient({
+  game,
+  elements: multiplayerElements,
+  getPlayerSetup: () => {
+    updatePlayerSetupFromFields();
+    return playerSetup;
+  },
+  getNetworkPlayerDetails: () => ({
+    name: multiplayerElements.nameInput.value.trim() || 'Player',
+    modelId: multiplayerElements.tankInput.value || playerSetup[0]?.modelId || 'p1Custom',
+    color: multiplayerElements.colorInput.value || '#d45745'
+  }),
+  getDesignerLibrary: currentDesignerLibrary,
+  applyDesignerLibrary: applyNetworkDesignerLibrary,
+  getMatchSettings: currentMatchSettings,
+  applyMatchSettings: applyNetworkMatchSettings,
+  startLocalGame: (setup) => {
+    startConfiguredGame(setup);
+  }
+});
+
 addUiListener(startNewGameButton, 'click', startNewGame);
 addUiListener(nextRoundButton, 'click', startNextRound);
+addUiListener(showSetupButton, 'click', showSetupView);
 addUiListener(landscapeInput, 'change', syncWaterDefaultsForLandscape);
+addUiListener(matchRoundsInput, 'change', () => multiplayerClient?.publishSettings());
+addUiListener(waterEnabledInput, 'change', () => multiplayerClient?.publishSettings());
+addUiListener(waterLevelInput, 'change', () => multiplayerClient?.publishSettings());
+addUiListener(waterRiseInput, 'change', () => multiplayerClient?.publishSettings());
 addUiListener(newTankButton, 'click', () => addNewTankDesignerItem('tank'));
 addUiListener(newTurretButton, 'click', () => addNewTankDesignerItem('turret'));
 addUiListener(newAmmoButton, 'click', addNewAmmoDesignerItem);
@@ -1101,6 +1280,23 @@ designerTabs.forEach((tab) => {
   addUiListener(tab, 'click', () => {
     selectDesignerTab(tab.dataset.designerTab);
   });
+});
+
+setupModeTabs.forEach((tab) => {
+  addUiListener(tab, 'click', () => {
+    selectSetupMode(tab.dataset.setupMode);
+  });
+});
+
+addUiListener(multiplayerElements.copyHostAddressButton, 'click', async () => {
+  const text = multiplayerElements.hostAddress.textContent.trim();
+
+  try {
+    await navigator.clipboard.writeText(text);
+    multiplayerElements.roomHint.textContent = 'Join address copied';
+  } catch {
+    multiplayerElements.roomHint.textContent = text;
+  }
 });
 
 addUiListener(window, 'keydown', (event) => {
@@ -1145,14 +1341,13 @@ document.querySelectorAll('[data-modal-target]').forEach((button) => {
         renderAmmoDesigner();
       }
 
-      if (modal === newGameModal) {
-        renderNewGameModal();
-      }
-
       openCanvasCenteredModal(modal);
     }
   });
 });
+
+renderGameSetup();
+selectSetupMode('local');
 
 window.tanksUiCleanup = () => {
   uiCleanupHandlers.forEach((cleanup) => cleanup());

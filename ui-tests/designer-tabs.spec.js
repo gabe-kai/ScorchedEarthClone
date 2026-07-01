@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 
+test.beforeEach(async ({ request }) => {
+  await request.post('/api/test-reset-room');
+});
+
 test('designer tabs attach the selected tab to the active panel', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Designer' }).click();
@@ -35,17 +39,17 @@ test('designer tabs attach the selected tab to the active panel', async ({ page 
 
 test('settings actions are click-only and no longer show hotkey badges', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'Start Local Game' }).click();
 
   await expect(page.locator('.settings-panel .button-icon')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'New Game' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Game Setup' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Designer' })).toBeVisible();
 });
 
-test('new game modal contains match and player setup', async ({ page }) => {
+test('setup page contains match, player, and future slot setup', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'New Game' }).click();
 
-  await expect(page.getByRole('heading', { name: 'New Game' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tanks!' })).toBeVisible();
   await expect(page.locator('#matchRoundsInput')).toBeVisible();
   await expect(page.locator('#landscapeInput')).toBeVisible();
   await expect(page.locator('#waterEnabledInput')).toBeVisible();
@@ -53,7 +57,174 @@ test('new game modal contains match and player setup', async ({ page }) => {
   await expect(page.locator('#waterRiseInput')).toBeVisible();
   await expect(page.locator('#playerOneNameInput')).toBeVisible();
   await expect(page.locator('#playerTwoTankInput')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Start New Game' })).toBeVisible();
+  await expect(page.locator('#localPlayerSlotsInput')).toHaveValue('2');
+  await expect(page.locator('#localAiSlotsInput')).toHaveValue('0');
+  await page.getByRole('button', { name: /Host LAN/ }).click();
+  await expect(page.locator('#multiplayerPlayerSlotsInput')).toBeVisible();
+  await expect(page.locator('#multiplayerPlayerSlotsInput')).toHaveAttribute('max', '6');
+  await expect(page.locator('#multiplayerAiSlotsInput')).toHaveAttribute('max', '4');
+  await expect(page.getByRole('button', { name: 'Start LAN Game' })).toBeVisible();
+});
+
+test('LAN room actions live on the relevant slot rows', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByRole('button', { name: /Host LAN/ }).click();
+  await expect(page.locator('#createRoomButton')).toBeHidden();
+  await expect(page.locator('#joinRoomButton')).toBeHidden();
+
+  const mySlot = page.locator('.multiplayer-slot-row.is-me').first();
+  await expect(mySlot.getByRole('button', { name: /Ready/ })).toHaveCount(0);
+  await expect(mySlot.getByRole('button', { name: 'Leave' })).toBeVisible();
+  await expect(page.locator('#multiplayerSlotList').getByRole('button', { name: 'Join' })).toHaveCount(0);
+  await expect(page.locator('#multiplayerRoomHint')).toContainText('Waiting for player 2');
+
+  await page.locator('.multiplayer-slot-row.is-me').getByRole('button', { name: 'Leave' }).click();
+});
+
+test('LAN joiners receive the host tank designer library', async ({ browser }) => {
+  const hostContext = await browser.newContext();
+  const joinContext = await browser.newContext();
+  const hostPage = await hostContext.newPage();
+  const joinPage = await joinContext.newPage();
+
+  await hostPage.goto('/');
+  await hostPage.getByRole('button', { name: 'Designer' }).click();
+  await hostPage.getByRole('button', { name: 'Tanks & Turrets' }).click();
+  await hostPage.locator('#tankNameInput').fill('LAN Rhino');
+  await hostPage.locator('#tankNameInput').dispatchEvent('input');
+  await hostPage.getByRole('button', { name: 'Close' }).click();
+  await hostPage.getByRole('button', { name: /Host LAN/ }).click();
+
+  await joinPage.goto('/');
+  await joinPage.getByRole('button', { name: /Join LAN/ }).click();
+
+  await expect(joinPage.locator('#multiplayerTankInput')).toContainText('LAN Rhino');
+
+  await hostContext.close();
+  await joinContext.close();
+});
+
+test('multiple clients can host independent LAN rooms', async ({ browser }) => {
+  const hostContext = await browser.newContext();
+  const secondContext = await browser.newContext();
+  const joinContext = await browser.newContext();
+  const hostPage = await hostContext.newPage();
+  const secondPage = await secondContext.newPage();
+  const joinPage = await joinContext.newPage();
+
+  await hostPage.goto('/');
+  await hostPage.getByRole('button', { name: /Host LAN/ }).click();
+  await hostPage.locator('#multiplayerNameInput').fill('Daniel Host');
+  await expect(hostPage.locator('.multiplayer-slot-row.is-me')).toContainText('Host');
+
+  await secondPage.goto('/');
+  await secondPage.getByRole('button', { name: /Host LAN/ }).click();
+  await secondPage.locator('#multiplayerNameInput').fill('Eli Host');
+  await expect(secondPage.locator('.multiplayer-slot-row.is-me')).toContainText('Host');
+  await expect(hostPage.locator('.multiplayer-slot-row.is-me')).toContainText('Daniel Host');
+  await expect(hostPage.locator('.multiplayer-slot-row.is-me')).toContainText('Host');
+
+  await joinPage.goto('/');
+  await joinPage.getByRole('button', { name: /Join LAN/ }).click();
+  await expect(joinPage.locator('.multiplayer-room-card')).toHaveCount(2);
+  await expect(joinPage.locator('#multiplayerSlotList')).toContainText("Daniel Host's Game");
+  await expect(joinPage.locator('#multiplayerSlotList')).toContainText("Eli Host's Game");
+  await expect(joinPage.locator('#multiplayerSlotList').getByRole('button', { name: 'Join' }).first()).toBeVisible();
+
+  await hostContext.close();
+  await secondContext.close();
+  await joinContext.close();
+});
+
+test('LAN game starts after a guest joins and marks ready', async ({ browser }) => {
+  const hostContext = await browser.newContext();
+  const joinContext = await browser.newContext();
+  const hostPage = await hostContext.newPage();
+  const joinPage = await joinContext.newPage();
+
+  await hostPage.goto('/');
+  await hostPage.getByRole('button', { name: /Host LAN/ }).click();
+  await expect(hostPage.locator('#multiplayerRoomHint')).toContainText('Waiting for player 2');
+
+  await joinPage.goto('/');
+  await joinPage.getByRole('button', { name: /Join LAN/ }).click();
+  await joinPage.locator('#multiplayerSlotList').getByRole('button', { name: 'Join' }).first().click();
+  await joinPage.locator('.multiplayer-slot-row.is-me').getByRole('button', { name: 'Ready' }).click();
+
+  await expect(hostPage.locator('#multiplayerRoomHint')).toContainText('Ready to start');
+  await expect(hostPage.getByRole('button', { name: 'Start LAN Game' })).toBeEnabled();
+  await hostPage.getByRole('button', { name: 'Start LAN Game' }).click();
+
+  await expect(hostPage.locator('#gameView')).toBeVisible();
+  await expect(joinPage.locator('#gameView')).toBeVisible();
+  await expect(hostPage.locator('#multiplayerRoomHint')).toContainText('LAN game in progress');
+
+  await hostContext.close();
+  await joinContext.close();
+});
+
+test('LAN guest can control player 2 on their turn', async ({ browser }) => {
+  const hostContext = await browser.newContext();
+  const joinContext = await browser.newContext();
+  const hostPage = await hostContext.newPage();
+  const joinPage = await joinContext.newPage();
+
+  await hostPage.goto('/');
+  await hostPage.getByRole('button', { name: /Host LAN/ }).click();
+  await joinPage.goto('/');
+  await joinPage.getByRole('button', { name: /Join LAN/ }).click();
+  await joinPage.locator('#multiplayerSlotList').getByRole('button', { name: 'Join' }).first().click();
+  await joinPage.locator('.multiplayer-slot-row.is-me').getByRole('button', { name: 'Ready' }).click();
+  await hostPage.getByRole('button', { name: 'Start LAN Game' }).click();
+  await expect(joinPage.locator('#gameView')).toBeVisible();
+
+  await hostPage.keyboard.press('Space');
+  await expect.poll(
+    () => joinPage.evaluate(() => window.scorchedGame.currentPlayerIndex),
+    { timeout: 15000 }
+  ).toBe(1);
+  await expect.poll(() => joinPage.evaluate(() => window.scorchedGame.inputEnabled)).toBe(true);
+
+  const angleBefore = await hostPage.evaluate(() => window.scorchedGame.players[1].angle);
+  await joinPage.keyboard.down('ArrowLeft');
+  await joinPage.waitForTimeout(250);
+  await hostPage.evaluate(() => {
+    window.scorchedGame.update(0.25);
+  });
+  await joinPage.keyboard.up('ArrowLeft');
+
+  await expect.poll(() => hostPage.evaluate(() => window.scorchedGame.players[1].angle)).not.toBe(angleBefore);
+  await joinPage.keyboard.press('Space');
+  await expect.poll(() => hostPage.evaluate(() => Boolean(window.scorchedGame.projectile))).toBe(true);
+
+  await hostContext.close();
+  await joinContext.close();
+});
+
+test('LAN guest refresh reclaims the same active game slot', async ({ browser }) => {
+  const hostContext = await browser.newContext();
+  const joinContext = await browser.newContext();
+  const hostPage = await hostContext.newPage();
+  const joinPage = await joinContext.newPage();
+
+  await hostPage.goto('/');
+  await hostPage.getByRole('button', { name: /Host LAN/ }).click();
+  await joinPage.goto('/');
+  await joinPage.getByRole('button', { name: /Join LAN/ }).click();
+  await joinPage.locator('#multiplayerSlotList').getByRole('button', { name: 'Join' }).first().click();
+  await joinPage.locator('.multiplayer-slot-row.is-me').getByRole('button', { name: 'Ready' }).click();
+  await hostPage.getByRole('button', { name: 'Start LAN Game' }).click();
+  await expect(joinPage.locator('#gameView')).toBeVisible();
+
+  await joinPage.reload();
+
+  await expect(joinPage.locator('#gameView')).toBeVisible();
+  await expect.poll(() => joinPage.evaluate(() => window.scorchedGame.snapshotOnly)).toBe(true);
+  await expect.poll(() => hostPage.locator('#multiplayerRoomHint').textContent()).toContain('LAN game in progress');
+
+  await hostContext.close();
+  await joinContext.close();
 });
 
 test('tank preview draws a pivot-centered protractor', async ({ page }) => {

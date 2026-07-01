@@ -76,6 +76,11 @@ export class ScorchedGame {
     this.handleVisibilityChange = () => this.onVisibilityChange();
     this.handlePageHide = () => this.stop();
     this.inventoryChangeHandler = null;
+    this.turnChangeHandler = null;
+    this.commandHandler = null;
+    this.inputEnabled = true;
+    this.inputBlockedMessage = '';
+    this.snapshotOnly = false;
     this.tankModels = TANK_MODELS;
     this.itemTypes = ITEM_TYPES;
     this.playerSetup = [
@@ -98,6 +103,38 @@ export class ScorchedGame {
 
   setInventoryChangeHandler(handler) {
     this.inventoryChangeHandler = handler;
+  }
+
+  setTurnChangeHandler(handler) {
+    this.turnChangeHandler = handler;
+  }
+
+  setCommandHandler(handler) {
+    this.commandHandler = handler;
+  }
+
+  setInputEnabled(enabled, message = '') {
+    const wasEnabled = this.inputEnabled;
+    this.inputEnabled = Boolean(enabled);
+    this.inputBlockedMessage = message;
+
+    if (wasEnabled && !this.inputEnabled) {
+      this.keys.clear();
+    }
+  }
+
+  setSnapshotOnly(snapshotOnly) {
+    const nextSnapshotOnly = Boolean(snapshotOnly);
+
+    if (this.snapshotOnly === nextSnapshotOnly) {
+      return;
+    }
+
+    this.snapshotOnly = nextSnapshotOnly;
+
+    if (this.snapshotOnly) {
+      this.keys.clear();
+    }
   }
 
   notifyInventoryChanged() {
@@ -293,7 +330,7 @@ export class ScorchedGame {
     // floaters are little words or numbers that rise and fade away.
     this.floaters = [];
 
-    // A tank hit ends the round until the New Game button starts a fresh one.
+    // A tank hit ends the round until Game Setup starts a fresh one.
     this.roundOver = false;
 
     // Pick a new random wind value for this round.
@@ -383,6 +420,17 @@ export class ScorchedGame {
       event.preventDefault();
     }
 
+    if (!this.inputEnabled) {
+      if (this.inputBlockedMessage) {
+        this.message = this.inputBlockedMessage;
+      }
+      return;
+    }
+
+    if (this.commandHandler?.({ type: 'keyDown', code: event.code })) {
+      return;
+    }
+
     if (event.code === 'Tab') {
       this.toggleControlMode();
       return;
@@ -400,7 +448,118 @@ export class ScorchedGame {
   }
 
   onKeyUp(event) {
+    if (this.commandHandler?.({ type: 'keyUp', code: event.code })) {
+      return;
+    }
+
     this.keys.delete(event.code);
+  }
+
+  applyCommand(command) {
+    if (!command || typeof command.type !== 'string') {
+      return;
+    }
+
+    if (command.type === 'keyDown') {
+      if (command.code === 'Tab') {
+        this.toggleControlMode();
+        return;
+      }
+
+      if (command.code === 'Space') {
+        this.fire({ ignoreInputLock: true });
+        return;
+      }
+
+      this.keys.add(command.code);
+      return;
+    }
+
+    if (command.type === 'keyUp') {
+      this.keys.delete(command.code);
+      return;
+    }
+
+    if (command.type === 'selectQuickbar') {
+      this.selectQuickbarSlot(Number(command.slotIndex), { fromCommand: true });
+      return;
+    }
+
+    if (command.type === 'assignQuickbar') {
+      this.assignQuickbarSlot(command.itemId, Number(command.slotIndex), { fromCommand: true });
+      return;
+    }
+
+    if (command.type === 'purchaseItem') {
+      this.purchaseItem(command.itemId, { fromCommand: true });
+      return;
+    }
+
+    if (command.type === 'sellItem') {
+      this.sellItem(command.itemId, { fromCommand: true });
+    }
+  }
+
+  snapshot() {
+    return {
+      players: this.players.map((tank) => clonePlain(tank)),
+      terrain: [...this.terrain],
+      currentPlayerIndex: this.currentPlayerIndex,
+      turnNumber: this.turnNumber,
+      roundNumber: this.roundNumber,
+      matchRounds: this.matchRounds,
+      landscapeMode: this.landscapeMode,
+      landscapeName: this.landscapeName,
+      waterEnabled: this.waterEnabled,
+      waterLevelPercent: this.waterLevelPercent,
+      waterRisePerShot: this.waterRisePerShot,
+      seaLevel: this.seaLevel,
+      scoreboard: this.scoreboard.map((score) => ({ ...score })),
+      projectile: clonePlain(this.projectile),
+      impact: clonePlain(this.impact),
+      floaters: this.floaters.map((floater) => ({ ...floater })),
+      roundOver: this.roundOver,
+      wind: this.wind,
+      message: this.message,
+      controlMode: this.controlMode,
+      tankModels: clonePlain(this.tankModels),
+      itemTypes: clonePlain(this.itemTypes)
+    };
+  }
+
+  applySnapshot(snapshot, options = {}) {
+    if (!snapshot) {
+      return;
+    }
+
+    this.players = snapshot.players.map((tank) => clonePlain(tank));
+    this.terrain = [...snapshot.terrain];
+    this.currentPlayerIndex = snapshot.currentPlayerIndex;
+    this.turnNumber = snapshot.turnNumber;
+    this.roundNumber = snapshot.roundNumber;
+    this.matchRounds = snapshot.matchRounds;
+    this.landscapeMode = snapshot.landscapeMode;
+    this.landscapeName = snapshot.landscapeName;
+    this.waterEnabled = snapshot.waterEnabled;
+    this.waterLevelPercent = snapshot.waterLevelPercent;
+    this.waterRisePerShot = snapshot.waterRisePerShot;
+    this.seaLevel = snapshot.seaLevel;
+    this.scoreboard = snapshot.scoreboard.map((score) => ({ ...score }));
+    this.projectile = clonePlain(snapshot.projectile);
+    this.impact = clonePlain(snapshot.impact);
+    this.floaters = snapshot.floaters.map((floater) => ({ ...floater }));
+    this.roundOver = snapshot.roundOver;
+    this.wind = snapshot.wind;
+    this.message = snapshot.message;
+    this.controlMode = snapshot.controlMode;
+    this.tankModels = snapshot.tankModels ? clonePlain(snapshot.tankModels) : this.tankModels;
+    this.itemTypes = snapshot.itemTypes ? clonePlain(snapshot.itemTypes) : this.itemTypes;
+    this.updateHud();
+    this.notifyInventoryChanged();
+
+    if (options.drawNow) {
+      this.draw();
+    }
   }
 
   tick(time) {
@@ -437,6 +596,10 @@ export class ScorchedGame {
   }
 
   update(deltaSeconds) {
+    if (this.snapshotOnly) {
+      return;
+    }
+
     this.updateFloaters(deltaSeconds);
     this.updateTanks(deltaSeconds);
 
@@ -458,8 +621,13 @@ export class ScorchedGame {
     }
 
     // When the round is over, leave the final message on screen.
-    // The New Game button starts the next round.
+    // Game Setup starts the next round.
     if (this.roundOver) {
+      return;
+    }
+
+    if (!this.inputEnabled) {
+      this.keys.clear();
       return;
     }
 
@@ -838,7 +1006,7 @@ export class ScorchedGame {
         endsRound: true,
         message: matchComplete
           ? `${attacker.name} wins the match! Start a new game when ready.`
-          : `${attacker.name} destroyed ${target.name}! Open New Game for the next round.`
+          : `${attacker.name} destroyed ${target.name}! Open Game Setup for the next round.`
       });
       return;
     }
@@ -899,7 +1067,14 @@ export class ScorchedGame {
     return null;
   }
 
-  fire() {
+  fire(options = {}) {
+    if (!this.inputEnabled && !options.ignoreInputLock) {
+      if (this.inputBlockedMessage) {
+        this.message = this.inputBlockedMessage;
+      }
+      return;
+    }
+
     // Do not allow a second shot while one is already flying.
     if (this.projectile || this.impact || this.roundOver) {
       return;
@@ -950,6 +1125,7 @@ export class ScorchedGame {
     // There are only two players, index 0 and index 1.
     // 1 - 0 becomes 1. 1 - 1 becomes 0.
     // That swaps back and forth between the players.
+    this.keys.clear();
     this.currentPlayerIndex = 1 - this.currentPlayerIndex;
     this.turnNumber += 1;
 
@@ -959,6 +1135,10 @@ export class ScorchedGame {
     this.currentTank().moveFuel = TANK_MOVE_FUEL;
     this.message = `${this.currentTank().name}'s turn.`;
     this.notifyInventoryChanged();
+
+    if (this.turnChangeHandler) {
+      this.turnChangeHandler(this.currentPlayerIndex);
+    }
   }
 
   currentTank() {
@@ -1012,7 +1192,11 @@ export class ScorchedGame {
     }));
   }
 
-  selectQuickbarSlot(slotIndex) {
+  selectQuickbarSlot(slotIndex, options = {}) {
+    if (!options.fromCommand && this.commandHandler?.({ type: 'selectQuickbar', slotIndex })) {
+      return;
+    }
+
     const inventory = this.currentInventory();
 
     if (slotIndex < 0 || slotIndex >= inventory.quickbar.length || !inventory.quickbar[slotIndex]) {
@@ -1024,7 +1208,11 @@ export class ScorchedGame {
     this.notifyInventoryChanged();
   }
 
-  assignQuickbarSlot(itemId, slotIndex) {
+  assignQuickbarSlot(itemId, slotIndex, options = {}) {
+    if (!options.fromCommand && this.commandHandler?.({ type: 'assignQuickbar', itemId, slotIndex })) {
+      return;
+    }
+
     const inventory = this.currentInventory();
 
     if (slotIndex < 0 || slotIndex >= inventory.quickbar.length || !inventory.items[itemId]) {
@@ -1037,7 +1225,11 @@ export class ScorchedGame {
     this.notifyInventoryChanged();
   }
 
-  purchaseItem(itemId) {
+  purchaseItem(itemId, options = {}) {
+    if (!options.fromCommand && this.commandHandler?.({ type: 'purchaseItem', itemId })) {
+      return;
+    }
+
     const inventory = this.currentInventory();
     const item = this.itemTypes[itemId];
 
@@ -1053,7 +1245,11 @@ export class ScorchedGame {
     this.notifyInventoryChanged();
   }
 
-  sellItem(itemId) {
+  sellItem(itemId, options = {}) {
+    if (!options.fromCommand && this.commandHandler?.({ type: 'sellItem', itemId })) {
+      return;
+    }
+
     const inventory = this.currentInventory();
     const itemState = inventory.items[itemId];
 
@@ -1509,6 +1705,20 @@ function firstFilledQuickbarSlot(quickbar) {
   return filledIndex === -1 ? 0 : filledIndex;
 }
 
+function clonePlain(value) {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(clonePlain);
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [key, clonePlain(entry)])
+  );
+}
+
 function setText(element, text) {
   // updateHud runs every frame, even when nothing visible changed.
   // Checking first avoids asking the browser to redo text layout needlessly.
@@ -1775,6 +1985,10 @@ function createBaseTerrain(mode, variant) {
     ensureDefaultWaterDip(terrain, variant.waterDipCenterX, variant.waterDipWidth);
   }
 
+  if (mode === 'cliffs') {
+    ensureMostlyDryTerrain(terrain, 0.7);
+  }
+
   return smoothTerrain(terrain, mode === 'cliffs' ? 1 : 2);
 }
 
@@ -1802,6 +2016,19 @@ function ensureDefaultWaterDip(terrain, centerX, width) {
 
     const closeness = 1 - distance / (width / 2);
     terrain[index] = Math.max(terrain[index], defaultSeaLevel + 10 * closeness);
+  }
+}
+
+function ensureMostlyDryTerrain(terrain, minimumDryRatio) {
+  const defaultSeaLevel = waterPercentToY(18);
+  let dryRatio = terrain.filter((groundY) => groundY <= defaultSeaLevel).length / terrain.length;
+
+  while (dryRatio < minimumDryRatio) {
+    for (let index = 0; index < terrain.length; index++) {
+      terrain[index] = clampTerrainY(terrain[index] - 8);
+    }
+
+    dryRatio = terrain.filter((groundY) => groundY <= defaultSeaLevel).length / terrain.length;
   }
 }
 

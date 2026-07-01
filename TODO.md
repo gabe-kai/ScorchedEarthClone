@@ -37,7 +37,7 @@ For the next mission, start with:
 
 Draw one tank on graph paper.
 
-Then put the dot coordinates into the game so your tank appears in **New Game**.
+Then put the dot coordinates into the game so your tank appears in **Game Setup**.
 
 ### The Coordinate Rules
 
@@ -182,7 +182,7 @@ If your tank is the very last one, no comma is needed.
 
 Refresh the browser.
 
-Open **New Game**.
+Open **Game Setup**.
 
 Choose your tank for Player 1.
 
@@ -232,7 +232,7 @@ cannon: {
 
 Test:
 
-- Choose the turret in **New Game**.
+- Choose the turret in **Game Setup**.
 - Switch to Move mode.
 - It should not drive.
 - It should still be able to aim and shoot.

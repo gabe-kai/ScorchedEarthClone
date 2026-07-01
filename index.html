@@ -7,7 +7,227 @@
     <link rel="stylesheet" href="/src/styles.css">
   </head>
   <body>
-    <main class="app-shell">
+    <main id="setupView" class="setup-view">
+      <section class="setup-shell" aria-label="Game setup">
+        <header class="setup-header">
+          <div>
+            <h1>Tanks!</h1>
+            <p>Choose how to play, set the battlefield, and get everyone into a slot.</p>
+          </div>
+          <button class="settings-button setup-designer-button" type="button" data-modal-target="designerModal">Designer</button>
+        </header>
+
+        <nav class="setup-mode-tabs" aria-label="Game setup modes">
+          <button class="setup-mode-tab is-selected" type="button" data-setup-mode="local">
+            <strong>Local Game</strong>
+            <span>Two players, one computer</span>
+          </button>
+          <button class="setup-mode-tab" type="button" data-setup-mode="host">
+            <strong>Host LAN</strong>
+            <span>Start a room for nearby PCs</span>
+          </button>
+          <button class="setup-mode-tab" type="button" data-setup-mode="join">
+            <strong>Join LAN</strong>
+            <span>Join someone else's room</span>
+          </button>
+        </nav>
+
+        <div class="setup-grid">
+          <section class="setup-panel setup-panel-primary">
+            <div class="setup-section-header">
+              <h2>Match</h2>
+              <span id="setupModeNote">Local hot-seat game</span>
+            </div>
+            <div class="match-card-grid">
+              <fieldset class="designer-fieldset match-card">
+                <legend>Length</legend>
+                <label class="compact-field">
+                  <span>Rounds</span>
+                  <input id="matchRoundsInput" type="number" min="1" max="25" step="1" value="3">
+                </label>
+              </fieldset>
+              <fieldset class="designer-fieldset match-card">
+                <legend>Terrain</legend>
+                <label class="compact-field">
+                  <span>Landscape</span>
+                  <select id="landscapeInput">
+                    <option value="cycle">Cycle Landscapes</option>
+                    <option value="rolling">Rolling Hills</option>
+                    <option value="cliffs">Cliffs</option>
+                    <option value="risingSea">Rising Sea</option>
+                    <option value="random">Mixed Ground</option>
+                  </select>
+                </label>
+              </fieldset>
+              <fieldset class="designer-fieldset match-card match-water-card">
+                <legend>Water</legend>
+                <label class="compact-field checkbox-field">
+                  <span>Include Water</span>
+                  <input id="waterEnabledInput" type="checkbox" checked>
+                </label>
+                <div class="match-water-grid">
+                  <label class="compact-field">
+                    <span>Level %</span>
+                    <input id="waterLevelInput" type="number" min="0" max="80" step="1" value="18">
+                  </label>
+                  <label class="compact-field">
+                    <span>Rise / Shot</span>
+                    <input id="waterRiseInput" type="number" min="0" max="40" step="1" value="0">
+                  </label>
+                </div>
+              </fieldset>
+            </div>
+          </section>
+
+          <section class="setup-panel" data-setup-panel="local">
+            <div class="setup-section-header">
+              <h2>Local Seats</h2>
+              <span>Ready now: 2 players</span>
+            </div>
+            <div class="setup-form-grid slot-count-grid">
+              <label class="compact-field">
+                <span>Human Players</span>
+                <input id="localPlayerSlotsInput" type="number" min="2" max="6" step="1" value="2" disabled>
+              </label>
+              <label class="compact-field">
+                <span>AI Players</span>
+                <input id="localAiSlotsInput" type="number" min="0" max="4" step="1" value="0" disabled>
+              </label>
+            </div>
+            <div class="future-slot-strip" aria-label="Future local player slots">
+              <span class="future-slot is-active">P1</span>
+              <span class="future-slot is-active">P2</span>
+              <span class="future-slot">P3</span>
+              <span class="future-slot">P4</span>
+              <span class="future-slot">P5</span>
+              <span class="future-slot">P6</span>
+            </div>
+          </section>
+
+          <section class="setup-panel is-hidden" data-setup-panel="host">
+            <div class="setup-section-header">
+              <h2>Host Lobby</h2>
+              <span>Share this with nearby players</span>
+            </div>
+            <div class="join-address-card">
+              <span>Join Address</span>
+              <strong id="multiplayerHostAddress">Start the dev server on the host PC</strong>
+              <button id="copyHostAddressButton" type="button">Copy</button>
+            </div>
+            <div class="setup-form-grid slot-count-grid">
+              <label class="compact-field">
+                <span>Player Slots</span>
+                <input id="multiplayerPlayerSlotsInput" type="number" min="2" max="6" step="1" value="2">
+              </label>
+              <label class="compact-field">
+                <span>AI Slots</span>
+                <input id="multiplayerAiSlotsInput" type="number" min="0" max="4" step="1" value="0">
+              </label>
+              <button id="multiplayerApplySettingsButton" class="setup-small-button" type="button">Apply Slots</button>
+            </div>
+          </section>
+
+          <section class="setup-panel is-hidden" data-setup-panel="join">
+            <div class="setup-section-header">
+              <h2>Join Room</h2>
+              <span>Open the host address first</span>
+            </div>
+            <div class="setup-form-grid join-setup-grid">
+              <div class="multiplayer-status-card">
+                <span>Status</span>
+                <strong id="multiplayerStatus">Offline</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="setup-panel setup-panel-wide is-hidden" data-setup-network-section>
+            <div class="setup-section-header">
+              <h2>Your Player</h2>
+              <span>Network players only set their own details</span>
+            </div>
+            <div class="network-player-grid">
+              <label class="compact-field">
+                <span>Name</span>
+                <input id="multiplayerNameInput" type="text" maxlength="24" placeholder="Player name">
+              </label>
+              <label class="compact-field">
+                <span>Tank</span>
+                <select id="multiplayerTankInput"></select>
+              </label>
+              <label class="compact-field color-field">
+                <span>Player Color</span>
+                <input id="multiplayerColorInput" type="color" value="#d45745">
+              </label>
+            </div>
+          </section>
+
+          <section class="setup-panel setup-panel-wide" data-setup-local-section>
+            <div class="setup-section-header">
+              <h2>Players</h2>
+              <span>Tank choices are ready for 2 players; more slots are planned</span>
+            </div>
+            <div class="player-setup-grid">
+              <fieldset class="designer-fieldset">
+                <legend>Player 1</legend>
+                <div class="player-setup-fields">
+                  <label>
+                    <span>Name</span>
+                    <input id="playerOneNameInput" type="text" maxlength="24">
+                  </label>
+                  <label>
+                    <span>Tank</span>
+                    <select id="playerOneTankInput"></select>
+                  </label>
+                  <label>
+                    <span>Player Color</span>
+                    <input id="playerOneColorInput" type="color">
+                  </label>
+                </div>
+              </fieldset>
+              <fieldset class="designer-fieldset">
+                <legend>Player 2</legend>
+                <div class="player-setup-fields">
+                  <label>
+                    <span>Name</span>
+                    <input id="playerTwoNameInput" type="text" maxlength="24">
+                  </label>
+                  <label>
+                    <span>Tank</span>
+                    <select id="playerTwoTankInput"></select>
+                  </label>
+                  <label>
+                    <span>Player Color</span>
+                    <input id="playerTwoColorInput" type="color">
+                  </label>
+                </div>
+              </fieldset>
+            </div>
+          </section>
+
+          <section class="setup-panel setup-panel-wide is-hidden" data-setup-lan-section>
+            <div class="setup-section-header">
+              <h2>LAN Room Slots</h2>
+              <span id="multiplayerRoomHint">Host or join a room to use these slots</span>
+            </div>
+            <div class="multiplayer-actions is-hidden" aria-hidden="true">
+              <button id="createRoomButton" type="button">Host Room</button>
+              <button id="joinRoomButton" type="button">Join Open Slot</button>
+              <button id="leaveRoomButton" type="button">Leave Slot</button>
+              <button id="multiplayerReadyButton" type="button">Ready</button>
+            </div>
+            <div id="multiplayerSlotList" class="multiplayer-slot-list"></div>
+          </section>
+        </div>
+
+        <footer class="setup-footer">
+          <button id="nextRoundButton" class="secondary-action" type="button" hidden>Next Round</button>
+          <button id="startNewGameButton" class="primary-action" type="button">Start Local Game</button>
+          <button id="multiplayerStartButton" class="primary-action is-hidden" type="button">Start LAN Game</button>
+        </footer>
+      </section>
+    </main>
+
+    <main id="gameView" class="app-shell is-hidden">
       <section class="game-panel" aria-label="Tanks!">
         <canvas id="game" width="1280" height="720"></canvas>
         <div class="quickbar-dock" aria-label="Inventory quickbar">
@@ -86,89 +306,12 @@
 
         <section class="hud-panel settings-panel">
           <h2>Settings</h2>
-          <button class="settings-button" type="button" data-modal-target="newGameModal">New Game</button>
+          <button id="gamePauseButton" class="settings-button is-hidden" type="button">Pause LAN Game</button>
+          <button class="settings-button" type="button" id="showSetupButton">Game Setup</button>
           <button class="settings-button" type="button" data-modal-target="designerModal">Designer</button>
         </section>
       </aside>
     </main>
-
-    <dialog id="newGameModal" class="modal new-game-modal">
-      <form method="dialog">
-        <div class="modal-header">
-          <h2>New Game</h2>
-          <button type="submit">Close</button>
-        </div>
-        <fieldset class="designer-fieldset">
-          <legend>Match</legend>
-          <label class="match-rounds-field">
-            <span>Rounds</span>
-            <input id="matchRoundsInput" type="number" min="1" max="25" step="1" value="3">
-          </label>
-          <label class="match-landscape-field">
-            <span>Landscape</span>
-            <select id="landscapeInput">
-              <option value="cycle">Cycle Landscapes</option>
-              <option value="rolling">Rolling Hills</option>
-              <option value="cliffs">Cliffs</option>
-              <option value="risingSea">Rising Sea</option>
-              <option value="random">Mixed Ground</option>
-            </select>
-          </label>
-          <label class="match-water-field">
-            <span>Include Water</span>
-            <input id="waterEnabledInput" type="checkbox" checked>
-          </label>
-          <label class="match-water-field">
-            <span>Water Level %</span>
-            <input id="waterLevelInput" type="number" min="0" max="80" step="1" value="18">
-          </label>
-          <label class="match-water-field">
-            <span>Rise / Shot px</span>
-            <input id="waterRiseInput" type="number" min="0" max="40" step="1" value="0">
-          </label>
-        </fieldset>
-        <div class="player-setup-grid">
-          <fieldset class="designer-fieldset">
-            <legend>Player 1</legend>
-            <div class="player-setup-fields">
-              <label>
-                <span>Name</span>
-                <input id="playerOneNameInput" type="text" maxlength="24">
-              </label>
-              <label>
-                <span>Tank</span>
-                <select id="playerOneTankInput"></select>
-              </label>
-              <label>
-                <span>Player Color</span>
-                <input id="playerOneColorInput" type="color">
-              </label>
-            </div>
-          </fieldset>
-          <fieldset class="designer-fieldset">
-            <legend>Player 2</legend>
-            <div class="player-setup-fields">
-              <label>
-                <span>Name</span>
-                <input id="playerTwoNameInput" type="text" maxlength="24">
-              </label>
-              <label>
-                <span>Tank</span>
-                <select id="playerTwoTankInput"></select>
-              </label>
-              <label>
-                <span>Player Color</span>
-                <input id="playerTwoColorInput" type="color">
-              </label>
-            </div>
-          </fieldset>
-        </div>
-        <div class="modal-actions">
-          <button id="nextRoundButton" type="button" hidden>Next Round</button>
-          <button id="startNewGameButton" type="button">Start New Game</button>
-        </div>
-      </form>
-    </dialog>
 
     <dialog id="designerModal" class="modal designer-modal">
       <form method="dialog">

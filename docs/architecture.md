@@ -16,6 +16,8 @@ The local server is `tools/dev-server.mjs`. It exists because browsers are stric
 - `main.js`: owns browser UI wiring, modals, Designer tabs, saved setup, and mapping Designer data into game data.
 - `tankModels.js`: owns starter tank and turret polygon data.
 - `itemTypes.js`: owns starter ammo and inventory data.
+- `multiplayerClient.js`: owns the LAN room browser, slot UI, message client, and local turn-input lock.
+- `tools/dev-server.mjs`: serves files and owns the WebSocket LAN room registry.
 - `aiming.js`: owns cannon angle math.
 - `projectile.js`: owns projectile motion and simple collision checks.
 
@@ -44,3 +46,21 @@ Current Daniel-friendly bridge:
 - The Tank Designer maps UI fields into game tank models.
 - The Ammo Designer maps UI fields into game item data.
 - Two ammo mappings are intentionally left as Daniel tasks: `explosionSize -> blastRadius` and `divotSize -> terrainDamage`.
+
+## Multiplayer Boundary
+
+The current multiplayer code is a multi-room LAN foundation:
+
+- many rooms on one local dev server
+- room codes and room listing
+- create/join/leave slots
+- ready/start/pause state
+- local input lock when it is not your slot's turn
+- player commands routed through the WebSocket server by room id
+- a headless server game loop that applies commands and publishes snapshots
+- game snapshots routed only to players in the same room
+- browser refresh/reconnect using a local `playerToken`
+- disconnect pauses for active games, auto-resumes when everyone is back
+- stuck start handshakes and abandoned rooms are cleaned up
+
+The server now owns live multiplayer gameplay after match start. The current bridge is that the room creator's browser still builds the initial match snapshot and sends the custom tank/ammo catalog to the server. The next hardening step is to move match creation/catalog conversion fully into shared code so the server can create the first snapshot by itself.
