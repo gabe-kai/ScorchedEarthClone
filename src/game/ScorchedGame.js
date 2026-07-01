@@ -77,6 +77,7 @@ export class ScorchedGame {
     this.handlePageHide = () => this.stop();
     this.inventoryChangeHandler = null;
     this.tankModels = TANK_MODELS;
+    this.itemTypes = ITEM_TYPES;
     this.playerSetup = [
       { name: 'Player 1', modelId: 'p1Custom', color: '#d45745' },
       { name: 'Player 2', modelId: 'p2Custom', color: '#4d8ad8' }
@@ -115,6 +116,20 @@ export class ScorchedGame {
     }
 
     this.updateHud();
+  }
+
+  setItemTypes(itemTypes) {
+    // The Ammo Designer can build a live item library.
+    // Keeping it on the game object lets gameplay use designer edits instead
+    // of always reading the starter data from itemTypes.js.
+    this.itemTypes = itemTypes;
+
+    if (this.players) {
+      this.players.forEach((tank) => this.syncInventoryWithItemTypes(tank.inventory));
+    }
+
+    this.updateHud();
+    this.notifyInventoryChanged();
   }
 
   setPlayerSetup(playerSetup) {
@@ -317,8 +332,30 @@ export class ScorchedGame {
       power: 240,
       modelId,
       playerColor,
-      inventory: createStartingInventory()
+      inventory: createStartingInventory(this.itemTypes)
     };
+  }
+
+  syncInventoryWithItemTypes(inventory) {
+    // Designer-created ammo should show up in each player's inventory list.
+    // Existing counts are kept, while new items start with their default count.
+    for (const [itemId, item] of Object.entries(this.itemTypes)) {
+      if (!inventory.items[itemId]) {
+        inventory.items[itemId] = { count: item.count ?? 0 };
+      }
+    }
+
+    for (const itemId of Object.keys(inventory.items)) {
+      if (!this.itemTypes[itemId]) {
+        delete inventory.items[itemId];
+      }
+    }
+
+    inventory.quickbar = inventory.quickbar.map((itemId) => (this.itemTypes[itemId] ? itemId : null));
+
+    if (!inventory.quickbar[inventory.selectedSlot]) {
+      inventory.selectedSlot = firstFilledQuickbarSlot(inventory.quickbar);
+    }
   }
 
   modelFor(modelId) {
@@ -945,7 +982,7 @@ export class ScorchedGame {
 
   selectedItem() {
     const itemId = this.selectedItemId();
-    return itemId ? ITEM_TYPES[itemId] : null;
+    return itemId ? this.itemTypes[itemId] : null;
   }
 
   selectedItemState() {
@@ -959,7 +996,7 @@ export class ScorchedGame {
     return inventory.quickbar.map((itemId, index) => ({
       index,
       itemId,
-      item: itemId ? ITEM_TYPES[itemId] : null,
+      item: itemId ? this.itemTypes[itemId] : null,
       isSelected: index === inventory.selectedSlot
     }));
   }
@@ -967,7 +1004,7 @@ export class ScorchedGame {
   inventoryItems() {
     const inventory = this.currentInventory();
 
-    return Object.entries(ITEM_TYPES).map(([itemId, item]) => ({
+    return Object.entries(this.itemTypes).map(([itemId, item]) => ({
       itemId,
       item,
       count: inventory.items[itemId]?.count || 0,
@@ -1002,7 +1039,7 @@ export class ScorchedGame {
 
   purchaseItem(itemId) {
     const inventory = this.currentInventory();
-    const item = ITEM_TYPES[itemId];
+    const item = this.itemTypes[itemId];
 
     if (!item || item.count === Infinity) {
       return;
@@ -1387,12 +1424,16 @@ export class ScorchedGame {
     // y is the ground height at the impact. We do not need it yet,
     // but it may be useful later for bigger explosions or particles.
 
+    const ammo = this.projectile?.item;
+    const craterRadius = ammo?.blastRadius ?? CRATER_RADIUS;
+    const craterDepth = CRATER_DEPTH * (ammo?.terrainDamage ?? 1);
+
     for (let index = 0; index < this.terrain.length; index++) {
       const pointX = terrainIndexToX(index);
       const distance = distanceBetween(pointX, x);
 
-      if (isInsideCrater(distance, CRATER_RADIUS)) {
-        const depth = craterDepthAt(distance, CRATER_RADIUS, CRATER_DEPTH);
+      if (isInsideCrater(distance, craterRadius)) {
+        const depth = craterDepthAt(distance, craterRadius, craterDepth);
 
         // Canvas y gets bigger as it goes down the screen.
         // Adding depth digs the ground downward.

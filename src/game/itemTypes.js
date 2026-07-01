@@ -90,18 +90,27 @@ export const STARTING_INVENTORY = {
   selectedSlot: 0
 };
 
-export function createStartingInventory() {
+export function createStartingInventory(itemTypes = ITEM_TYPES) {
+  const itemEntries = Object.entries(itemTypes);
+  const knownQuickbarItems = STARTING_INVENTORY.quickbar.filter((itemId) => itemTypes[itemId]);
+  const fallbackQuickbarItems = itemEntries
+    .filter(([, item]) => item.kind === 'ammo')
+    .map(([itemId]) => itemId)
+    .slice(0, STARTING_INVENTORY.quickbar.length);
+  const quickbarItems = knownQuickbarItems.length > 0 ? knownQuickbarItems : fallbackQuickbarItems;
+
   return {
-    items: Object.fromEntries(
-      Object.entries(STARTING_INVENTORY.items).map(([itemId, item]) => [itemId, { ...item }])
-    ),
-    quickbar: [...STARTING_INVENTORY.quickbar],
+    items: Object.fromEntries(itemEntries.map(([itemId, item]) => [
+      itemId,
+      { count: STARTING_INVENTORY.items[itemId]?.count ?? item.count ?? 0 }
+    ])),
+    quickbar: STARTING_INVENTORY.quickbar.map((_, index) => quickbarItems[index] ?? null),
     selectedSlot: STARTING_INVENTORY.selectedSlot
   };
 }
 
-export function describeItem(itemId) {
-  const item = ITEM_TYPES[itemId];
+export function describeItem(itemId, itemTypes = ITEM_TYPES) {
+  const item = itemTypes[itemId];
 
   if (!item) {
     return 'Empty slot';

@@ -1,29 +1,44 @@
 # Daniel Task List
 
-These are intentionally small programming jobs where the interesting part is logic or math.
+These are intentionally small programming jobs where the interesting part is
+coordinates, math, or logic.
 
-## Starter Tasks
+Use [../TODO.md](../TODO.md) as the main mission board. This file is a shorter
+index of good task ideas.
 
-1. Change how fast the cannon turns.
-2. Change the minimum and maximum cannon angles.
-3. Make wind stronger or weaker.
-4. Tune gravity so shots feel better.
-5. Change the starting power for each tank.
-6. Make a direct hit display a different message.
+## Current Best Sequence
 
-## Math Tasks
+1. Add one hand-drawn tank to `src/game/tankModels.js`.
+2. Add one hand-drawn turret to `src/game/tankModels.js`.
+3. Tune the collision box for the new tank.
+4. Fix the Ammo Designer slider mappings in `src/main.js`.
+5. Make impact animations use the selected ammo size.
+6. Add blast-radius damage for near misses.
+7. Make fuel cost more when driving uphill.
+8. Improve the water-depth rule.
 
-1. Explain why 0 degrees points right.
-2. Explain why 90 degrees points up.
-3. Predict whether a shot will go farther if power goes up.
-4. Predict what positive wind does to the shot.
-5. Change `cannonTip` so the cannon can be longer or shorter.
+## Good Daniel Files
 
-## Later Tasks
+- `src/game/tankModels.js`: graph-paper tank and turret points.
+- `src/math/aiming.js`: angle helpers.
+- `src/physics/projectile.js`: gravity, wind, and projectile movement.
+- `src/main.js`: Designer data mapping. Only touch small functions at first.
+- `src/game/ScorchedGame.js`: game logic. Only touch one named function at a time.
 
-1. Add tank health.
-2. Add damage based on how close the projectile lands.
-3. Add a simple AI that picks an angle and power.
-4. Add a second weapon.
-5. Add random hills.
-6. Let players type their names.
+## Good First Questions
+
+1. Which way is positive x?
+2. Which way is positive y on canvas?
+3. Why does `90` degrees point up?
+4. What happens if `blastRadius` gets bigger?
+5. What happens if `terrainDamage` gets bigger?
+6. What should happen if a tank tries to climb a cliff?
+7. How deep should water be before a tank is destroyed?
+
+## Tasks To Avoid For Now
+
+- Rebuilding modal layouts.
+- Saving/loading with `localStorage`.
+- Large canvas drawing rewrites.
+- Full landscape generation.
+- Online multiplayer.

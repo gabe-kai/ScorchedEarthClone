@@ -30,12 +30,13 @@ When you are done for the day, stop the dev server with `Ctrl+C` in the terminal
 
 ## Controls
 
-- `ArrowLeft` / `ArrowRight`: rotate the current tank cannon
-- `A` / `D`: rotate the current tank cannon
-- `ArrowUp` / `ArrowDown`: raise or lower shot power
-- `W` / `S`: raise or lower shot power
+- `Tab`: switch between Aim mode and Move mode
+- Aim mode: `ArrowLeft` / `ArrowRight` or `A` / `D` rotate the current tank cannon
+- Aim mode: `ArrowUp` / `ArrowDown` or `W` / `S` raise or lower shot power
+- Move mode: `ArrowLeft` / `ArrowRight` or `A` / `D` drive the current tank
 - `Space`: fire
-- `R`: reset the round
+- `I`: open inventory
+- `1` through `0`: select quickbar slots
 
 ## Project Shape
 
@@ -48,10 +49,10 @@ When you are done for the day, stop the dev server with `Ctrl+C` in the terminal
 - `docs/`: design notes, architecture, and Daniel task ideas
 - `tools/dev-server.mjs`: tiny local web server
 
-## First Milestone
+## Current Milestone
 
-Two local players take turns firing basic projectiles. The tank cannon moves in real time when an arrow key is held, and the projectile flies with gravity and wind.
+Two local players take turns moving, aiming, buying ammo, choosing quickbar items, and firing across generated landscapes with wind, craters, water, fuel, health, and scorekeeping.
 
 ## Current Daniel Task
 
-Daniel can design two custom tanks on graph paper, then put their polygon points into [TODO.md](TODO.md)'s tank-model instructions.
+Daniel can design one custom tank on graph paper, add it by hand to [src/game/tankModels.js](src/game/tankModels.js), then choose it in the New Game window. See [TODO.md](TODO.md).

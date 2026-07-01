@@ -252,7 +252,7 @@ function renderQuickbar() {
         <span class="quickbar-hotkey">${hotkeyForSlot(slot.index)}</span>
         <span class="quickbar-symbol">${slot.item.icon}</span>
         <span class="quickbar-label">${slot.item.name}</span>
-        <span class="quickbar-tooltip">${describeItem(slot.itemId)}</span>
+        <span class="quickbar-tooltip">${describeItem(slot.itemId, game.itemTypes)}</span>
       `;
       button.addEventListener('click', () => {
         game.selectQuickbarSlot(slot.index);
@@ -289,7 +289,7 @@ function renderInventory() {
       <span class="inventory-icon">${inventoryItem.item.icon}</span>
       <span class="inventory-main">
         <strong>${inventoryItem.item.name}</strong>
-        <small>${describeItem(inventoryItem.itemId)}</small>
+        <small>${describeItem(inventoryItem.itemId, game.itemTypes)}</small>
       </span>
       <span class="inventory-quantity"><small>Qty</small><strong>${countText}</strong></span>
       <span class="inventory-actions">
@@ -428,8 +428,58 @@ function applyTankLibraryToGame(forcePlayerSetup = false) {
   renderQuickbar();
 }
 
+function applyItemLibraryToGame() {
+  game.setItemTypes(buildGameItemTypes());
+  renderQuickbar();
+}
+
 function buildGameTankModels() {
   return Object.fromEntries(tankDesignerItems.map((model) => [model.id, designerTankToGameModel(model)]));
+}
+
+function buildGameItemTypes() {
+  const nonAmmoItems = Object.fromEntries(
+    Object.entries(ITEM_TYPES).filter(([, item]) => item.kind !== 'ammo')
+  );
+  const designerAmmoItems = Object.fromEntries(
+    ammoDesignerItems.map((ammo) => [ammo.id, designerAmmoToGameItem(ammo)])
+  );
+
+  return {
+    ...designerAmmoItems,
+    ...nonAmmoItems
+  };
+}
+
+function designerAmmoToGameItem(ammo) {
+  const startingCount = ammo.inventoryCount === 'Infinity'
+    ? Infinity
+    : Math.max(0, Math.round(Number(ammo.inventoryCount || 0)));
+
+  return {
+    name: ammo.name || 'Unnamed Ammo',
+    kind: 'ammo',
+    icon: ammo.icon || '?',
+    count: startingCount,
+    projectileRadius: Math.max(3, Math.round(ammo.explosionSize / 12)),
+    shotColor: ammo.shotColor,
+    hitColor: ammo.hitColor,
+    missColor: ammo.missColor,
+    damage: Math.max(0, Math.round(ammo.damage || 0)),
+
+    // DANIEL AMMO DESIGNER TASK:
+    // These two fixed numbers are intentionally wrong-ish.
+    // The sliders in the Ammo Designer already change ammo.explosionSize and
+    // ammo.divotSize. Daniel's job will be to connect those slider values to
+    // blastRadius and terrainDamage so the real shot matches the preview.
+    blastRadius: 40,
+    terrainDamage: 1,
+
+    speedMultiplier: 1,
+    windMultiplier: 1,
+    price: Math.max(0, Math.round(ammo.price || 0)),
+    description: `${ammo.name || 'Unnamed Ammo'} from the Ammo Designer.`
+  };
 }
 
 function designerTankToGameModel(model) {
@@ -946,6 +996,7 @@ function updateSelectedAmmoFromFields() {
   renderAmmoDesignerList();
   updateAmmoPreview(ammo);
   saveDesignerState();
+  applyItemLibraryToGame();
 }
 
 function updateAmmoPreview(ammo) {
@@ -985,6 +1036,7 @@ function addNewAmmoDesignerItem() {
   ammoDesignerItems = [...ammoDesignerItems, newAmmo];
   selectedAmmoDesignerId = newAmmo.id;
   saveDesignerState();
+  applyItemLibraryToGame();
   renderAmmoDesigner();
 }
 
@@ -1023,6 +1075,7 @@ game.setInventoryChangeHandler(() => {
 });
 
 applyTankLibraryToGame(true);
+applyItemLibraryToGame();
 renderQuickbar();
 renderTankDesigner();
 renderAmmoDesigner();

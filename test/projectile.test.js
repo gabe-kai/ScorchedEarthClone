@@ -288,6 +288,46 @@ test('fire consumes finite ammo from inventory', () => {
   assert.equal(inventory.items.heavyShell.count, 2);
 });
 
+test('setItemTypes lets designer ammo affect inventory and damage', () => {
+  const game = createGame();
+
+  game.setItemTypes({
+    kidShot: {
+      name: 'Kid Shot',
+      kind: 'ammo',
+      icon: 'K',
+      count: 2,
+      projectileRadius: 5,
+      shotColor: '#123456',
+      hitColor: '#abcdef',
+      missColor: '#fedcba',
+      damage: 12,
+      blastRadius: 44,
+      terrainDamage: 1,
+      speedMultiplier: 1,
+      windMultiplier: 1,
+      price: 7,
+      description: 'Designer test shot.'
+    }
+  });
+
+  const inventory = game.currentInventory();
+  inventory.quickbar[0] = 'kidShot';
+  inventory.selectedSlot = 0;
+  const target = game.otherTank();
+
+  game.projectile = {
+    x: target.x,
+    y: target.y - 8,
+    item: game.selectedItem()
+  };
+
+  game.applyTankHit(target, target.x, target.y - 8);
+
+  assert.equal(game.inventoryItems()[0].itemId, 'kidShot');
+  assert.equal(target.health, 88);
+});
+
 test('purchaseItem and sellItem change inventory quantity', () => {
   const game = createGame();
   const inventory = game.currentInventory();
