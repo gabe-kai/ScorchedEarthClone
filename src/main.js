@@ -17,6 +17,9 @@ const hud = {
   tankHudPreview: document.querySelector('#tankHudPreview'),
   health: document.querySelector('#health'),
   healthFill: document.querySelector('#healthFill'),
+  controlMode: document.querySelector('#controlMode'),
+  moveFuel: document.querySelector('#moveFuel'),
+  fuelFill: document.querySelector('#fuelFill'),
   aimGauge: document.querySelector('#aimGauge'),
   windValue: document.querySelector('#windValue'),
   angle: document.querySelector('#angle'),
@@ -40,6 +43,10 @@ const newGameModal = document.querySelector('#newGameModal');
 const startNewGameButton = document.querySelector('#startNewGameButton');
 const nextRoundButton = document.querySelector('#nextRoundButton');
 const matchRoundsInput = document.querySelector('#matchRoundsInput');
+const landscapeInput = document.querySelector('#landscapeInput');
+const waterEnabledInput = document.querySelector('#waterEnabledInput');
+const waterLevelInput = document.querySelector('#waterLevelInput');
+const waterRiseInput = document.querySelector('#waterRiseInput');
 const quickbar = document.querySelector('#quickbar');
 const inventoryModal = document.querySelector('#inventoryModal');
 const inventoryList = document.querySelector('#inventoryList');
@@ -146,7 +153,11 @@ function openInventory() {
 
 function startNewGame() {
   updatePlayerSetupFromFields();
-  game.startMatch(playerSetup, Number(matchRoundsInput.value || 1));
+  game.startMatch(playerSetup, Number(matchRoundsInput.value || 1), landscapeInput.value, {
+    enabled: waterEnabledInput.checked,
+    levelPercent: Number(waterLevelInput.value || 0),
+    risePerShot: Number(waterRiseInput.value || 0)
+  });
   savePlayerSetup();
   renderQuickbar();
 
@@ -168,8 +179,24 @@ function startNextRound() {
 
 function renderNewGameModal() {
   renderPlayerSetup();
+  landscapeInput.value = game.landscapeMode;
+  waterEnabledInput.checked = game.waterEnabled;
+  waterLevelInput.value = String(game.waterLevelPercent);
+  waterRiseInput.value = String(game.waterRisePerShot);
   const canContinueMatch = game.roundOver && !game.isMatchComplete();
   nextRoundButton.hidden = !canContinueMatch;
+}
+
+function syncWaterDefaultsForLandscape() {
+  if (landscapeInput.value !== 'risingSea') {
+    return;
+  }
+
+  waterEnabledInput.checked = true;
+
+  if (Number(waterRiseInput.value || 0) === 0) {
+    waterRiseInput.value = '6';
+  }
 }
 
 function openCanvasCenteredModal(modal) {
@@ -1002,6 +1029,7 @@ renderAmmoDesigner();
 
 addUiListener(startNewGameButton, 'click', startNewGame);
 addUiListener(nextRoundButton, 'click', startNextRound);
+addUiListener(landscapeInput, 'change', syncWaterDefaultsForLandscape);
 addUiListener(newTankButton, 'click', () => addNewTankDesignerItem('tank'));
 addUiListener(newTurretButton, 'click', () => addNewTankDesignerItem('turret'));
 addUiListener(newAmmoButton, 'click', addNewAmmoDesignerItem);

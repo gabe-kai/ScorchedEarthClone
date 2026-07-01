@@ -31,6 +31,9 @@ function createGame() {
     playerName: { textContent: '' },
     health: { textContent: '' },
     healthFill: { style: createStyleMock() },
+    controlMode: { textContent: '' },
+    moveFuel: { textContent: '' },
+    fuelFill: { style: createStyleMock() },
     aimGauge: { style: createStyleMock(), title: '' },
     angle: { textContent: '' },
     power: { textContent: '' }
@@ -84,6 +87,187 @@ test('deformTerrainAt digs nearby terrain downward', () => {
 
   assert.ok(game.terrain[centerIndex] > centerBefore);
   assert.equal(game.terrain[farIndex], farBefore);
+});
+
+test('landscapes cycle to rising sea with exposed water zones', () => {
+  const game = createGame();
+
+  game.reset();
+  game.reset();
+
+  assert.equal(game.landscapeName, 'Rising Sea');
+  assert.equal(game.waterEnabled, true);
+  assert.equal(game.terrain.some((groundY) => groundY > game.seaLevel), true);
+});
+
+test('rolling and cliff landscapes are mostly above the default sea level', () => {
+  const game = createGame();
+
+  game.startMatch(game.playerSetup, 3, 'rolling', {
+    enabled: true,
+    levelPercent: 18,
+    risePerShot: 0
+  });
+  const rollingDryCount = game.terrain.filter((groundY) => groundY <= game.seaLevel).length;
+  const rollingWaterCount = game.terrain.filter((groundY) => groundY > game.seaLevel).length;
+
+  game.startMatch(game.playerSetup, 3, 'cliffs', {
+    enabled: true,
+    levelPercent: 18,
+    risePerShot: 0
+  });
+  const cliffDryCount = game.terrain.filter((groundY) => groundY <= game.seaLevel).length;
+
+  assert.ok(rollingDryCount / game.terrain.length > 0.65);
+  assert.ok(rollingWaterCount > 0);
+  assert.ok(cliffDryCount / game.terrain.length > 0.65);
+});
+
+test('tanks start on dry land when dry land is available', () => {
+  const game = createGame();
+
+  game.startMatch(game.playerSetup, 3, 'risingSea', {
+    enabled: true,
+    levelPercent: 18,
+    risePerShot: 0
+  });
+
+  assert.equal(game.isWaterAt(game.players[0].x), false);
+  assert.equal(game.isWaterAt(game.players[1].x), false);
+});
+
+test('tank spawn zones include dry driving room', () => {
+  const game = createGame();
+
+  game.startMatch(game.playerSetup, 3, 'risingSea', {
+    enabled: true,
+    levelPercent: 34,
+    risePerShot: 0
+  });
+
+  for (const tank of game.players) {
+    for (let x = tank.x - 72; x <= tank.x + 72; x += 8) {
+      assert.equal(game.isWaterAt(x), false);
+    }
+  }
+});
+
+test('turret spawn zones only need a dry standing pad', () => {
+  const game = createGame();
+
+  game.startMatch([
+    { name: 'Left Turret', modelId: 'hillTurret', color: '#44dd55' },
+    { name: 'Right Turret', modelId: 'hillTurret', color: '#dd5544' }
+  ], 3, 'risingSea', {
+    enabled: true,
+    levelPercent: 34,
+    risePerShot: 0
+  });
+
+  for (const tank of game.players) {
+    for (let x = tank.x - 24; x <= tank.x + 24; x += 8) {
+      assert.equal(game.isWaterAt(x), false);
+    }
+  }
+});
+
+test('fixed landscape selections still generate fresh terrain each match', () => {
+  const game = createGame();
+
+  game.startMatch(game.playerSetup, 3, 'rolling');
+  const firstTerrain = game.terrain.join(',');
+  game.startMatch(game.playerSetup, 3, 'rolling');
+  const secondTerrain = game.terrain.join(',');
+
+  assert.notEqual(firstTerrain, secondTerrain);
+  assert.equal(game.landscapeMode, 'rolling');
+});
+
+test('Tab toggles between aim and move mode', () => {
+  const game = createGame();
+  let prevented = false;
+
+  game.onKeyDown({
+    code: 'Tab',
+    target: null,
+    preventDefault() {
+      prevented = true;
+    }
+  });
+
+  assert.equal(prevented, true);
+  assert.equal(game.controlMode, 'move');
+  assert.equal(game.hud.controlMode.textContent, 'Move');
+});
+
+test('driveTank spends movement fuel and follows the terrain', () => {
+  const game = createGame();
+  const tank = game.currentTank();
+  const startX = tank.x;
+
+  game.driveTank(tank, 1, 0.2);
+
+  assert.ok(tank.x > startX);
+  assert.ok(tank.moveFuel < 120);
+  game.updateHud();
+  assert.match(game.hud.moveFuel.textContent, /%/);
+  assert.notEqual(game.hud.fuelFill.style.getPropertyValue('--fuel-remaining-percent'), '1');
+  assert.equal(tank.y, game.groundYAt(tank.x));
+});
+
+test('tank falls when terrain drops away underneath it', () => {
+  const game = createGame();
+  const tank = game.currentTank();
+  const startY = tank.y;
+
+  game.deformTerrainAt(tank.x, tank.y);
+  game.updateTanks(0.1);
+
+  assert.equal(tank.falling, true);
+  assert.ok(tank.y > startY);
+});
+
+test('shallow water is safe but deep water destroys a tank', () => {
+  const game = createGame();
+
+  game.reset();
+  game.reset();
+
+  const tank = game.currentTank();
+  const shallowDepth = tank.height * 0.25;
+  const deepDepth = tank.height * 0.5;
+  const tankIndex = Math.round(tank.x / 8);
+
+  game.terrain[tankIndex] = game.seaLevel + shallowDepth;
+  tank.y = game.groundYAt(tank.x);
+
+  game.updateTanks(0.016);
+
+  assert.equal(tank.destroyed, false);
+
+  game.terrain[tankIndex] = game.seaLevel + deepDepth;
+  tank.y = game.groundYAt(tank.x);
+
+  game.updateTanks(0.016);
+
+  assert.equal(tank.destroyed, true);
+  assert.equal(game.roundOver, true);
+  assert.equal(game.scoreboard[1].roundsWon, 1);
+});
+
+test('water level rises after a shot when rise per shot is enabled', () => {
+  const game = createGame();
+
+  game.startMatch(game.playerSetup, 3, 'risingSea', {
+    enabled: true,
+    levelPercent: 18,
+    risePerShot: 6
+  });
+  const seaLevelBefore = game.seaLevel;
+
+  game.fire();
+
+  assert.equal(game.seaLevel, seaLevelBefore - 6);
 });
 
 test('selectQuickbarSlot changes selected item', () => {
@@ -327,9 +511,11 @@ test('startMatch applies setup, clears scores, and stores match length', () => {
   game.startMatch([
     { name: 'Daniel', modelId: 'p1Custom', color: '#44dd55' },
     { name: 'Eli', modelId: 'p2Custom', color: '#dd5544' }
-  ], 5);
+  ], 5, 'cliffs');
 
   assert.equal(game.matchRounds, 5);
+  assert.equal(game.landscapeMode, 'cliffs');
+  assert.equal(game.landscapeName, 'Cliffs');
   assert.equal(game.roundNumber, 1);
   assert.equal(game.players[0].name, 'Daniel');
   assert.equal(game.scoreboard[0].roundsWon, 0);

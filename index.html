@@ -37,15 +37,25 @@
         <section id="playerPanel" class="hud-panel player-panel">
           <div class="player-header">
             <h2 id="playerName">Player 1</h2>
+            <div id="controlMode" class="control-mode-pill" aria-label="Current control mode">Aim</div>
             <canvas id="tankHudPreview" class="tank-hud-preview" width="96" height="56" aria-label="Current tank preview"></canvas>
           </div>
           <div class="health-meter" aria-label="Current tank health">
-            <div class="health-meter-header">
-              <span>Health</span>
-              <strong id="health">100 / 100</strong>
-            </div>
             <div class="health-bar">
               <div id="healthFill" class="health-fill"></div>
+              <div class="meter-bar-label">
+                <span>Health</span>
+                <strong id="health">100 / 100</strong>
+              </div>
+            </div>
+          </div>
+          <div class="fuel-meter" aria-label="Movement fuel">
+            <div class="fuel-bar">
+              <div id="fuelFill" class="fuel-fill"></div>
+              <div class="meter-bar-label">
+                <span>Fuel</span>
+                <strong id="moveFuel">100%</strong>
+              </div>
             </div>
           </div>
           <div id="aimGauge" class="aim-gauge" title="Angle 0 deg | Power 0 | Wind 0">
@@ -93,6 +103,28 @@
           <label class="match-rounds-field">
             <span>Rounds</span>
             <input id="matchRoundsInput" type="number" min="1" max="25" step="1" value="3">
+          </label>
+          <label class="match-landscape-field">
+            <span>Landscape</span>
+            <select id="landscapeInput">
+              <option value="cycle">Cycle Landscapes</option>
+              <option value="rolling">Rolling Hills</option>
+              <option value="cliffs">Cliffs</option>
+              <option value="risingSea">Rising Sea</option>
+              <option value="random">Mixed Ground</option>
+            </select>
+          </label>
+          <label class="match-water-field">
+            <span>Include Water</span>
+            <input id="waterEnabledInput" type="checkbox" checked>
+          </label>
+          <label class="match-water-field">
+            <span>Water Level %</span>
+            <input id="waterLevelInput" type="number" min="0" max="80" step="1" value="18">
+          </label>
+          <label class="match-water-field">
+            <span>Rise / Shot px</span>
+            <input id="waterRiseInput" type="number" min="0" max="40" step="1" value="0">
           </label>
         </fieldset>
         <div class="player-setup-grid">

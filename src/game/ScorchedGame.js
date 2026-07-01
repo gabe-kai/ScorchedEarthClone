@@ -10,6 +10,7 @@ import { TANK_MODELS } from './tankModels.js';
 const WIDTH = 1280;
 const HEIGHT = 720;
 const GROUND_Y = 620;
+const BEDROCK_Y = HEIGHT - 36;
 const CANNON_LENGTH = 34;
 const CANNON_TURN_SPEED = 55;
 const POWER_STEP = 90;
@@ -20,10 +21,20 @@ const IMPACT_DURATION_SECONDS = 0.45;
 const FLOATER_DURATION_SECONDS = 1.1;
 const SELF_HIT_GRACE_SECONDS = 0.25;
 const TANK_MAX_HEALTH = 100;
+const TANK_GRAVITY = 720;
+const TANK_MOVE_SPEED = 86;
+const TANK_MOVE_FUEL = 120;
+const TANK_MOVE_FUEL_PER_PIXEL = 1;
+const MAX_DRIVE_STEP_HEIGHT = 10;
+const FALL_DAMAGE_SPEED = 360;
+const FALL_DAMAGE_DIVISOR = 18;
+const WATER_DAMAGE = 999;
+const DEEP_WATER_FRACTION = 1 / 3;
 const CRATER_RADIUS = 40;
 const CRATER_DEPTH = 50;
 const MIN_TERRAIN_Y = 120;
 const MAX_TERRAIN_Y = HEIGHT - 8;
+const LANDSCAPE_MODES = ['rolling', 'cliffs', 'risingSea', 'random'];
 
 // MAIN GAME CLASS
 //
@@ -71,6 +82,11 @@ export class ScorchedGame {
       { name: 'Player 2', modelId: 'p2Custom', color: '#4d8ad8' }
     ];
     this.matchRounds = 3;
+    this.landscapeMode = 'cycle';
+    this.waterEnabled = true;
+    this.waterLevelPercent = 18;
+    this.waterRisePerShot = 0;
+    this.seaLevel = waterPercentToY(this.waterLevelPercent);
     this.scoreboard = createScoreboard(this.playerSetup);
 
     this.roundNumber = 0;
@@ -128,7 +144,7 @@ export class ScorchedGame {
     this.notifyInventoryChanged();
   }
 
-  startMatch(playerSetup, matchRounds = this.matchRounds) {
+  startMatch(playerSetup, matchRounds = this.matchRounds, landscapeMode = this.landscapeMode, waterOptions = {}) {
     // A match is the bigger container around several rounds.
     // Starting a match applies setup, clears the scoreboard, and begins round 1.
     this.playerSetup = playerSetup.map((player, index) => ({
@@ -137,6 +153,11 @@ export class ScorchedGame {
       color: player.color || (index === 0 ? '#d45745' : '#4d8ad8')
     }));
     this.matchRounds = Math.max(1, Math.round(matchRounds || 1));
+    this.landscapeMode = normalizeLandscapeMode(landscapeMode);
+    this.waterEnabled = waterOptions.enabled !== false;
+    this.waterLevelPercent = clampNumber(Number(waterOptions.levelPercent ?? this.waterLevelPercent), 0, 80);
+    this.waterRisePerShot = clampNumber(Number(waterOptions.risePerShot ?? this.waterRisePerShot), 0, 40);
+    this.seaLevel = waterPercentToY(this.waterLevelPercent);
     this.scoreboard = createScoreboard(this.playerSetup);
     this.roundNumber = 0;
     this.reset();
@@ -221,18 +242,31 @@ export class ScorchedGame {
 
     // terrain is an array of ground heights.
     // Each number says where the ground is at one x position.
-    // Right now all values are GROUND_Y, so the battlefield starts flat.
-    this.terrain = createFlatTerrain();
+    const landscape = createLandscape(this.roundNumber, this.landscapeMode);
+    this.terrain = landscape.terrain;
+    this.landscapeName = landscape.name;
+    this.seaLevel = waterPercentToY(this.waterLevelPercent);
+
+    const playerOneModel = this.modelFor(this.playerSetup[0].modelId);
+    const playerTwoModel = this.modelFor(this.playerSetup[1].modelId);
+    const playerOnePlatformWidth = spawnPlatformWidth(playerOneModel);
+    const playerTwoPlatformWidth = spawnPlatformWidth(playerTwoModel);
+    const playerOneX = this.findDrySpawnX(190, 70, WIDTH / 2 - 80, playerOnePlatformWidth);
+    const playerTwoX = this.findDrySpawnX(1090, WIDTH / 2 + 80, WIDTH - 70, playerTwoPlatformWidth);
+    this.ensureDrySpawnZone(playerOneX, playerOnePlatformWidth);
+    this.ensureDrySpawnZone(playerTwoX, playerTwoPlatformWidth);
 
     // Put two tanks on opposite sides of the battlefield.
     // The last number is the starting cannon angle in degrees.
     this.players = [
-      this.createTank(this.playerSetup[0].name, 190, this.playerSetup[0].modelId, 35, this.playerSetup[0].color, 1),
-      this.createTank(this.playerSetup[1].name, 1090, this.playerSetup[1].modelId, 145, this.playerSetup[1].color, -1)
+      this.createTank(this.playerSetup[0].name, playerOneX, this.playerSetup[0].modelId, 35, this.playerSetup[0].color, 1),
+      this.createTank(this.playerSetup[1].name, playerTwoX, this.playerSetup[1].modelId, 145, this.playerSetup[1].color, -1)
     ];
+    this.players.forEach((tank) => this.snapTankToGround(tank));
 
     // Player 1 starts because arrays count from 0 in JavaScript.
     this.currentPlayerIndex = 0;
+    this.controlMode = 'aim';
 
     // No cannon ball exists until someone fires.
     this.projectile = null;
@@ -275,6 +309,9 @@ export class ScorchedGame {
       maxHealth: TANK_MAX_HEALTH,
       health: TANK_MAX_HEALTH,
       destroyed: false,
+      vy: 0,
+      falling: false,
+      moveFuel: TANK_MOVE_FUEL,
       angle: clampedAngle,
       facing,
       power: 240,
@@ -305,8 +342,13 @@ export class ScorchedGame {
 
     // These keys normally make the browser scroll the page.
     // preventDefault stops that so the keys only control the game.
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space'].includes(event.code)) {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'Tab'].includes(event.code)) {
       event.preventDefault();
+    }
+
+    if (event.code === 'Tab') {
+      this.toggleControlMode();
+      return;
     }
 
     // Space fires one shot. It is handled immediately instead of being stored.
@@ -359,6 +401,11 @@ export class ScorchedGame {
 
   update(deltaSeconds) {
     this.updateFloaters(deltaSeconds);
+    this.updateTanks(deltaSeconds);
+
+    if (this.roundOver) {
+      return;
+    }
 
     // If a cannon ball exists, it gets the whole update.
     // Players cannot aim or fire again until the shot is over.
@@ -381,6 +428,18 @@ export class ScorchedGame {
 
     // Only the current player's tank should respond to controls.
     const tank = this.currentTank();
+
+    if (this.controlMode === 'move') {
+      if (this.keys.has('ArrowLeft')  || this.keys.has('KeyA')) {
+        this.driveTank(tank, -1, deltaSeconds);
+      }
+
+      if (this.keys.has('ArrowRight')  || this.keys.has('KeyD')) {
+        this.driveTank(tank, 1, deltaSeconds);
+      }
+
+      return;
+    }
 
     // Cannon aiming controls.
     //
@@ -405,6 +464,200 @@ export class ScorchedGame {
     if (this.keys.has('ArrowDown')  || this.keys.has('KeyS')) {
       tank.power = Math.max(MIN_POWER, tank.power - POWER_STEP * deltaSeconds);
     }
+  }
+
+  toggleControlMode() {
+    this.controlMode = this.controlMode === 'aim' ? 'move' : 'aim';
+    this.keys.clear();
+    this.updateHud();
+  }
+
+  updateTanks(deltaSeconds) {
+    for (const tank of this.players) {
+      this.updateTankFalling(tank, deltaSeconds);
+    }
+  }
+
+  updateTankFalling(tank, deltaSeconds) {
+    if (tank.destroyed) {
+      return;
+    }
+
+    const groundY = this.groundYAt(tank.x);
+
+    if (this.isTankInWater(tank)) {
+      this.destroyTankInWater(tank);
+      return;
+    }
+
+    if (tank.y < groundY - 0.5) {
+      tank.falling = true;
+      tank.vy += TANK_GRAVITY * deltaSeconds;
+      tank.y = Math.min(groundY, tank.y + tank.vy * deltaSeconds);
+      return;
+    }
+
+    if (tank.falling) {
+      this.landTank(tank, groundY);
+      return;
+    }
+
+    tank.y = groundY;
+    tank.vy = 0;
+  }
+
+  landTank(tank, groundY) {
+    const landingSpeed = tank.vy;
+    tank.y = groundY;
+    tank.vy = 0;
+    tank.falling = false;
+
+    if (landingSpeed <= FALL_DAMAGE_SPEED) {
+      return;
+    }
+
+    const damage = Math.round((landingSpeed - FALL_DAMAGE_SPEED) / FALL_DAMAGE_DIVISOR);
+    this.applyEnvironmentalDamage(tank, damage, `${tank.name} landed hard.`);
+  }
+
+  driveTank(tank, direction, deltaSeconds) {
+    if (tank.destroyed || tank.falling || tank.moveFuel <= 0) {
+      return;
+    }
+
+    const distance = Math.min(tank.moveFuel / TANK_MOVE_FUEL_PER_PIXEL, TANK_MOVE_SPEED * deltaSeconds);
+    const nextX = Math.max(28, Math.min(WIDTH - 28, tank.x + direction * distance));
+    const currentGround = this.groundYAt(tank.x);
+    const nextGround = this.groundYAt(nextX);
+    const climbHeight = currentGround - nextGround;
+    const dropHeight = nextGround - currentGround;
+
+    if (climbHeight > MAX_DRIVE_STEP_HEIGHT) {
+      this.message = `${tank.name} cannot climb that cliff.`;
+      return;
+    }
+
+    tank.x = nextX;
+    tank.moveFuel = Math.max(0, tank.moveFuel - distance * TANK_MOVE_FUEL_PER_PIXEL);
+    tank.facing = direction < 0 ? -1 : 1;
+
+    if (dropHeight > MAX_DRIVE_STEP_HEIGHT) {
+      tank.falling = true;
+    } else {
+      tank.y = nextGround;
+    }
+
+    if (this.isTankInWater(tank)) {
+      this.destroyTankInWater(tank);
+    }
+  }
+
+  findDrySpawnX(preferredX, minX, maxX, platformWidth) {
+    if (this.isSpawnZoneDry(preferredX, platformWidth)) {
+      return preferredX;
+    }
+
+    for (let distance = TERRAIN_STEP; distance <= maxX - minX; distance += TERRAIN_STEP) {
+      const leftX = preferredX - distance;
+      const rightX = preferredX + distance;
+
+      if (leftX >= minX && this.isSpawnZoneDry(leftX, platformWidth)) {
+        return leftX;
+      }
+
+      if (rightX <= maxX && this.isSpawnZoneDry(rightX, platformWidth)) {
+        return rightX;
+      }
+    }
+
+    // If the whole side is flooded, fall back to the preferred location and
+    // let ensureDrySpawnZone raise a safe island under the tank.
+    return preferredX;
+  }
+
+  isSpawnZoneDry(centerX, width) {
+    const halfWidth = width / 2;
+
+    for (let x = centerX - halfWidth; x <= centerX + halfWidth; x += TERRAIN_STEP) {
+      if (this.isWaterAt(x)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  ensureDrySpawnZone(centerX, width) {
+    // Tanks need a little runway. Turrets only need a small pad.
+    // Smaller y is higher land, so this raises flooded spawn zones above water.
+    const halfWidth = width / 2;
+    const targetY = this.waterEnabled
+      ? Math.min(this.groundYAt(centerX), this.seaLevel - 18)
+      : this.groundYAt(centerX);
+
+    for (let index = 0; index < this.terrain.length; index++) {
+      const x = terrainIndexToX(index);
+
+      if (Math.abs(x - centerX) <= halfWidth) {
+        this.terrain[index] = Math.min(this.terrain[index], targetY);
+      }
+    }
+  }
+
+  snapTankToGround(tank) {
+    tank.y = this.groundYAt(tank.x);
+    tank.vy = 0;
+    tank.falling = false;
+  }
+
+  isWaterAt(x) {
+    return this.waterEnabled && this.groundYAt(x) > this.seaLevel;
+  }
+
+  waterDepthAt(x) {
+    return this.waterEnabled ? Math.max(0, this.groundYAt(x) - this.seaLevel) : 0;
+  }
+
+  isTankInWater(tank) {
+    return this.waterDepthAt(tank.x) > tank.height * DEEP_WATER_FRACTION &&
+      tank.y >= this.seaLevel - 2;
+  }
+
+  destroyTankInWater(tank) {
+    if (tank.destroyed) {
+      return;
+    }
+
+    this.applyEnvironmentalDamage(tank, WATER_DAMAGE, `${tank.name} sank below the waterline!`);
+  }
+
+  applyEnvironmentalDamage(tank, damage, message) {
+    const actualDamage = Math.min(tank.health, Math.max(0, Math.round(damage)));
+    tank.health = Math.max(0, tank.health - actualDamage);
+    this.addFloater(`-${actualDamage}`, tank.x, tank.y - tank.height, {
+      color: '#9fd8ff',
+      size: 24
+    });
+
+    if (tank.health > 0) {
+      this.message = message;
+      return;
+    }
+
+    tank.destroyed = true;
+    const loserIndex = this.players.indexOf(tank);
+    const winnerIndex = loserIndex === 0 ? 1 : 0;
+    const winner = this.players[winnerIndex];
+    this.scoreboard[winnerIndex].roundsWon += 1;
+    this.addFloater('KNOCKOUT!', WIDTH / 2, HEIGHT / 2 - 120, {
+      color: winner.playerColor,
+      size: 48,
+      duration: 1.4
+    });
+    this.roundOver = true;
+    this.impact = null;
+    this.projectile = null;
+    this.message = `${tank.name} was destroyed by the landscape. ${winner.name} wins the round.`;
   }
 
   turnTankCannon(tank, direction, deltaSeconds) {
@@ -451,8 +704,18 @@ export class ScorchedGame {
     // offscreen means the ball left the battlefield.
     // hitGround means the ball touched the terrain at its current x position.
     const offscreen = this.projectile.x < -20 || this.projectile.x > WIDTH + 20;
+    const hitWater = this.isWaterAt(this.projectile.x) && this.projectile.y >= this.seaLevel;
     const groundY = this.groundYAt(this.projectile.x);
     const hitGround = this.projectile.y >= groundY;
+
+    if (hitWater) {
+      this.startImpact('water', this.projectile.x, this.seaLevel, {
+        endsTurn: true,
+        message: `${this.currentTank().name}'s shot splashed into the water.`
+      });
+      this.projectile = null;
+      return;
+    }
 
     if (hitGround) {
       this.startImpact('ground', this.projectile.x, groundY, {
@@ -613,6 +876,11 @@ export class ScorchedGame {
     const selectedItem = this.selectedItem();
     const selectedItemState = this.selectedItemState();
 
+    if (tank.falling) {
+      this.message = `${tank.name} cannot fire while falling.`;
+      return;
+    }
+
     if (!selectedItem || selectedItem.kind !== 'ammo') {
       this.message = `${tank.name} needs an ammo item selected.`;
       return;
@@ -628,8 +896,17 @@ export class ScorchedGame {
     this.projectile.radius = selectedItem.projectileRadius;
     this.projectile.item = selectedItem;
     this.consumeSelectedItem();
+    this.raiseWaterAfterShot();
     this.notifyInventoryChanged();
     this.message = `${tank.name} fired ${selectedItem.name}.`;
+  }
+
+  raiseWaterAfterShot() {
+    if (!this.waterEnabled || this.waterRisePerShot <= 0) {
+      return;
+    }
+
+    this.seaLevel = Math.max(MIN_TERRAIN_Y, this.seaLevel - this.waterRisePerShot);
   }
 
   nextTurn() {
@@ -641,6 +918,8 @@ export class ScorchedGame {
 
     // Each new turn gets new wind, like classic artillery games.
     this.wind = randomWind();
+    this.controlMode = 'aim';
+    this.currentTank().moveFuel = TANK_MOVE_FUEL;
     this.message = `${this.currentTank().name}'s turn.`;
     this.notifyInventoryChanged();
   }
@@ -829,6 +1108,8 @@ export class ScorchedGame {
   }
 
   drawGround(ctx) {
+    this.drawWater(ctx);
+
     // Draw the terrain.
     //
     // The ground is no longer just one rectangle.
@@ -845,8 +1126,38 @@ export class ScorchedGame {
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#3d6c36';
-    ctx.fillRect(0, GROUND_Y + 20, WIDTH, HEIGHT - GROUND_Y - 20);
+    this.drawBedrock(ctx);
+  }
+
+  drawBedrock(ctx) {
+    ctx.fillStyle = '#2d2f2f';
+    ctx.beginPath();
+    ctx.moveTo(0, HEIGHT);
+    ctx.lineTo(0, bedrockTopYAt(0));
+
+    for (let x = 0; x <= WIDTH; x += 24) {
+      ctx.lineTo(x, bedrockTopYAt(x));
+    }
+
+    ctx.lineTo(WIDTH, HEIGHT);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  drawWater(ctx) {
+    if (!this.waterEnabled) {
+      return;
+    }
+
+    ctx.fillStyle = 'rgba(68, 139, 172, 0.78)';
+    ctx.fillRect(0, this.seaLevel, WIDTH, HEIGHT - this.seaLevel);
+
+    ctx.strokeStyle = 'rgba(179, 225, 239, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, this.seaLevel + 1);
+    ctx.lineTo(WIDTH, this.seaLevel + 1);
+    ctx.stroke();
   }
 
   drawTank(ctx, tank) {
@@ -893,6 +1204,12 @@ export class ScorchedGame {
       ctx.beginPath();
       ctx.arc(impact.x, impact.y, 50, 0, Math.PI * 2);
       ctx.fill();
+    } else if (impact.kind === 'water') {
+      ctx.strokeStyle = '#b8e4f2';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(impact.x, impact.y, 12 + impact.age * 42, 0, Math.PI * 2);
+      ctx.stroke();
     } else {
       ctx.fillStyle = '#ff6a00';
       ctx.beginPath();
@@ -921,6 +1238,10 @@ export class ScorchedGame {
     setText(this.hud.power, Math.round(tank.power).toString());
     setText(this.hud.playerName, tank.name);
     setText(this.hud.health, `${tank.health} / ${tank.maxHealth}`);
+    setText(this.hud.controlMode, titleCase(this.controlMode));
+    const fuelRemainingPercent = tank.moveFuel / TANK_MOVE_FUEL;
+    setText(this.hud.moveFuel, `${Math.round(fuelRemainingPercent * 100)}%`);
+    setStyleProperty(this.hud.fuelFill, '--fuel-remaining-percent', fuelRemainingPercent);
     setStyleProperty(this.hud.healthFill, '--health-percent', tank.health / tank.maxHealth);
     setStyleProperty(this.hud.healthFill, '--health-color', healthColor(tank.health / tank.maxHealth));
     this.drawHudTankPreview(tank, model);
@@ -1117,6 +1438,22 @@ function clampTerrainY(y) {
   return Math.max(MIN_TERRAIN_Y, Math.min(MAX_TERRAIN_Y, y));
 }
 
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function waterPercentToY(percent) {
+  // Percent is measured upward from the bottom of the battlefield.
+  // 0 means no visible water. 50 means halfway up the canvas.
+  return HEIGHT - HEIGHT * (percent / 100);
+}
+
+function bedrockTopYAt(x) {
+  return BEDROCK_Y +
+    Math.sin(x / 115) * 5 +
+    Math.sin(x / 37) * 2;
+}
+
 function createScoreboard(playerSetup) {
   return playerSetup.map((player) => ({
     name: player.name,
@@ -1184,6 +1521,10 @@ function healthColor(healthPercent) {
   // Healthy tanks are green, damaged tanks slide toward red.
   const hue = Math.max(0, Math.min(120, healthPercent * 120));
   return `hsl(${hue}, 78%, 48%)`;
+}
+
+function titleCase(text) {
+  return text.slice(0, 1).toUpperCase() + text.slice(1);
 }
 
 function startingFacing(model, preferredFacing) {
@@ -1292,13 +1633,202 @@ function randomWind() {
   return Math.round((Math.random() * 70 - 35) * 10) / 10;
 }
 
-function createFlatTerrain() {
-  // Build a flat terrain array.
-  //
-  // Example:
-  // terrain[0] is the ground near x = 0.
-  // terrain[1] is the ground near x = TERRAIN_STEP.
-  // terrain[2] is the ground near x = TERRAIN_STEP * 2.
+function randomRange(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function randomSign() {
+  return Math.random() < 0.5 ? -1 : 1;
+}
+
+function normalizeLandscapeMode(mode) {
+  return mode === 'cycle' || LANDSCAPE_MODES.includes(mode) ? mode : 'cycle';
+}
+
+function createLandscape(roundNumber, selectedMode = 'cycle') {
+  const mode = selectedMode === 'cycle'
+    ? LANDSCAPE_MODES[(roundNumber - 1) % LANDSCAPE_MODES.length]
+    : normalizeLandscapeMode(selectedMode);
+  const variant = createLandscapeVariant(mode);
+  const terrain = createBaseTerrain(mode, variant);
+
+  return {
+    name: landscapeName(mode),
+    terrain
+  };
+}
+
+function createLandscapeVariant(mode) {
+  // Math.random gives each new round a fresh silhouette.
+  // The mode still controls the overall flavor: hills, cliffs, rising sea, or mixed.
+  return {
+    phaseA: randomRange(0, Math.PI * 2),
+    phaseB: randomRange(0, Math.PI * 2),
+    phaseC: randomRange(0, Math.PI * 2),
+    hillA: randomRange(24, 44),
+    hillB: randomRange(12, 30),
+    hillC: randomRange(6, 16),
+    baseLift: randomRange(-12, 12),
+    cliffA: randomRange(300, 420),
+    cliffB: randomRange(595, 720),
+    cliffC: randomRange(880, 1010),
+    cliffStepA: randomSign() * randomRange(42, 68),
+    cliffStepB: randomSign() * randomRange(62, 92),
+    cliffStepC: randomSign() * randomRange(34, 58),
+    mixedBreakA: randomRange(470, 570),
+    mixedBreakB: randomRange(800, 900),
+    mixedStepA: randomSign() * randomRange(24, 50),
+    mixedStepB: randomSign() * randomRange(38, 68),
+    basinCenterX: randomRange(520, 760),
+    basinWidth: randomRange(230, 360),
+    basinDepth: randomRange(42, 86),
+    waterDipCenterX: randomRange(420, 860),
+    waterDipWidth: randomRange(170, 280),
+    waterDipDepth: randomRange(34, 58)
+  };
+}
+
+function createBaseTerrain(mode, variant) {
+  // Build an array of terrain heights.
+  // Smaller y means higher land. Bigger y means lower land.
   const pointCount = Math.ceil(WIDTH / TERRAIN_STEP) + 1;
-  return Array.from({ length: pointCount }, () => GROUND_Y);
+  const terrain = [];
+
+  for (let index = 0; index < pointCount; index++) {
+    const x = terrainIndexToX(index);
+    let y = GROUND_Y - landscapeLift(mode) + variant.baseLift;
+
+    if (mode === 'rolling') {
+      y += Math.sin(x / 92 + variant.phaseA) * variant.hillA +
+        Math.sin(x / 211 + variant.phaseB) * variant.hillB;
+      y += lowDipAt(x, variant.waterDipCenterX, variant.waterDipWidth, variant.waterDipDepth);
+    } else if (mode === 'cliffs') {
+      y += Math.sin(x / 120 + variant.phaseA) * 18;
+      y += x > variant.cliffA ? variant.cliffStepA : 0;
+      y += x > variant.cliffB ? variant.cliffStepB : 0;
+      y += x > variant.cliffC ? variant.cliffStepC : 0;
+    } else if (mode === 'risingSea') {
+      y += Math.sin(x / 120 + variant.phaseA) * variant.hillA +
+        Math.sin(x / 260 + variant.phaseB) * variant.hillB;
+      const distanceFromBasin = Math.abs(x - variant.basinCenterX);
+
+      if (distanceFromBasin < variant.basinWidth / 2) {
+        const closeness = 1 - distanceFromBasin / (variant.basinWidth / 2);
+        y += variant.basinDepth * closeness;
+      }
+    } else {
+      y += Math.sin(x / 70 + variant.phaseA) * variant.hillA +
+        Math.sin(x / 178 + variant.phaseB) * variant.hillB +
+        Math.cos(x / 41 + variant.phaseC) * variant.hillC;
+      y += x > variant.mixedBreakA ? variant.mixedStepA : 0;
+      y += x > variant.mixedBreakB ? variant.mixedStepB : 0;
+      y += lowDipAt(x, variant.waterDipCenterX, variant.waterDipWidth, variant.waterDipDepth * 0.7);
+    }
+
+    terrain.push(clampTerrainY(y));
+  }
+
+  protectStartZones(terrain);
+
+  if (mode === 'rolling') {
+    ensureDefaultWaterDip(terrain, variant.waterDipCenterX, variant.waterDipWidth);
+  }
+
+  return smoothTerrain(terrain, mode === 'cliffs' ? 1 : 2);
+}
+
+function lowDipAt(x, centerX, width, depth) {
+  const distance = Math.abs(x - centerX);
+
+  if (distance > width / 2) {
+    return 0;
+  }
+
+  const closeness = 1 - distance / (width / 2);
+  return depth * closeness;
+}
+
+function ensureDefaultWaterDip(terrain, centerX, width) {
+  const defaultSeaLevel = waterPercentToY(18);
+
+  for (let index = 0; index < terrain.length; index++) {
+    const x = terrainIndexToX(index);
+    const distance = Math.abs(x - centerX);
+
+    if (distance > width / 2) {
+      continue;
+    }
+
+    const closeness = 1 - distance / (width / 2);
+    terrain[index] = Math.max(terrain[index], defaultSeaLevel + 10 * closeness);
+  }
+}
+
+function landscapeLift(mode) {
+  if (mode === 'rolling') {
+    return 82;
+  }
+
+  if (mode === 'cliffs') {
+    return 92;
+  }
+
+  if (mode === 'risingSea') {
+    return 54;
+  }
+
+  return 78;
+}
+
+function spawnPlatformWidth(model) {
+  return model.type === 'turret' || model.canMove === false ? 72 : 190;
+}
+
+function protectStartZones(terrain) {
+  // Keep the first version fair: both tanks get usable starting shelves.
+  flattenZone(terrain, 190, 92);
+  flattenZone(terrain, 1090, 92);
+}
+
+function flattenZone(terrain, centerX, width) {
+  const centerIndex = Math.round(centerX / TERRAIN_STEP);
+  const targetY = terrain[centerIndex];
+
+  for (let index = 0; index < terrain.length; index++) {
+    const x = terrainIndexToX(index);
+
+    if (Math.abs(x - centerX) <= width / 2) {
+      terrain[index] = targetY;
+    }
+  }
+}
+
+function smoothTerrain(terrain, passes) {
+  let smoothed = terrain;
+
+  for (let pass = 0; pass < passes; pass++) {
+    smoothed = smoothed.map((height, index) => {
+      const previous = smoothed[Math.max(0, index - 1)];
+      const next = smoothed[Math.min(smoothed.length - 1, index + 1)];
+      return clampTerrainY((previous + height + next) / 3);
+    });
+  }
+
+  return smoothed;
+}
+
+function landscapeName(mode) {
+  if (mode === 'rolling') {
+    return 'Rolling Hills';
+  }
+
+  if (mode === 'cliffs') {
+    return 'Cliffs';
+  }
+
+  if (mode === 'risingSea') {
+    return 'Rising Sea';
+  }
+
+  return 'Mixed Ground';
 }

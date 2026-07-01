@@ -47,6 +47,10 @@ test('new game modal contains match and player setup', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'New Game' })).toBeVisible();
   await expect(page.locator('#matchRoundsInput')).toBeVisible();
+  await expect(page.locator('#landscapeInput')).toBeVisible();
+  await expect(page.locator('#waterEnabledInput')).toBeVisible();
+  await expect(page.locator('#waterLevelInput')).toBeVisible();
+  await expect(page.locator('#waterRiseInput')).toBeVisible();
   await expect(page.locator('#playerOneNameInput')).toBeVisible();
   await expect(page.locator('#playerTwoTankInput')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Start New Game' })).toBeVisible();

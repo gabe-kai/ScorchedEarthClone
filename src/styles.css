@@ -102,8 +102,8 @@ canvas {
 }
 
 .player-header {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 82px;
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
@@ -111,6 +111,20 @@ canvas {
 
 .player-header h2 {
   margin: 0;
+}
+
+.control-mode-pill {
+  min-width: 62px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--player-color) 70%, var(--border));
+  border-radius: 999px;
+  background: rgba(8, 11, 13, 0.46);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  box-shadow: 0 0 12px var(--player-glow);
 }
 
 .tank-hud-preview {
@@ -123,27 +137,17 @@ canvas {
   image-rendering: pixelated;
 }
 
-.health-meter {
+.health-meter,
+.fuel-meter {
   display: grid;
-  gap: 6px;
   padding: 8px 0;
   border-top: 1px solid var(--border-soft);
 }
 
-.health-meter-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.health-meter-header strong {
-  color: var(--text);
-}
-
-.health-bar {
-  height: 12px;
+.health-bar,
+.fuel-bar {
+  position: relative;
+  height: 20px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -158,6 +162,39 @@ canvas {
   border-radius: inherit;
   background: linear-gradient(90deg, var(--health-color), color-mix(in srgb, var(--health-color) 72%, #ffffff));
   transition: width 180ms ease, background 180ms ease;
+}
+
+.fuel-fill {
+  --fuel-remaining-percent: 1;
+  width: calc(var(--fuel-remaining-percent) * 100%);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #c7a95b, #efc768);
+  transition: width 180ms ease;
+}
+
+.meter-bar-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.88);
+}
+
+.meter-bar-label span {
+  color: rgba(236, 231, 219, 0.9);
+  font-weight: 700;
+}
+
+.meter-bar-label strong {
+  font-size: 12px;
 }
 
 .hud p {
@@ -580,7 +617,9 @@ canvas {
 }
 
 .player-setup-fields label,
-.match-rounds-field {
+.match-rounds-field,
+.match-landscape-field,
+.match-water-field {
   display: grid;
   gap: 4px;
   color: var(--muted);
@@ -589,7 +628,9 @@ canvas {
 
 .player-setup-fields input,
 .player-setup-fields select,
-.match-rounds-field input {
+.match-rounds-field input,
+.match-landscape-field select,
+.match-water-field input {
   width: 100%;
 }
 
@@ -600,6 +641,21 @@ canvas {
 
 .match-rounds-field {
   width: 120px;
+}
+
+.match-landscape-field {
+  width: min(220px, 100%);
+  margin-top: 8px;
+}
+
+.match-water-field {
+  width: min(150px, 100%);
+  margin-top: 8px;
+}
+
+.match-water-field input[type="checkbox"] {
+  width: auto;
+  justify-self: start;
 }
 
 .modal-actions {
