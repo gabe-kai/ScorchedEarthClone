@@ -203,6 +203,11 @@ export class ScorchedGame {
   }
 
   onKeyDown(event) {
+    if (isUiInputTarget(event.target)) {
+      this.keys.clear();
+      return;
+    }
+
     // These keys normally make the browser scroll the page.
     // preventDefault stops that so the keys only control the game.
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space'].includes(event.code)) {
@@ -510,10 +515,10 @@ export class ScorchedGame {
   inventoryItems() {
     const inventory = this.currentInventory();
 
-    return Object.entries(inventory.items).map(([itemId, itemState]) => ({
+    return Object.entries(ITEM_TYPES).map(([itemId, item]) => ({
       itemId,
-      item: ITEM_TYPES[itemId],
-      count: itemState.count,
+      item,
+      count: inventory.items[itemId]?.count || 0,
       isOnQuickbar: inventory.quickbar.includes(itemId)
     }));
   }
@@ -530,29 +535,57 @@ export class ScorchedGame {
     this.notifyInventoryChanged();
   }
 
-  toggleQuickbarItem(itemId) {
+  assignQuickbarSlot(itemId, slotIndex) {
     const inventory = this.currentInventory();
-    const existingIndex = inventory.quickbar.indexOf(itemId);
 
-    if (existingIndex !== -1) {
-      inventory.quickbar[existingIndex] = null;
+    if (slotIndex < 0 || slotIndex >= inventory.quickbar.length || !inventory.items[itemId]) {
+      return;
+    }
 
-      if (inventory.selectedSlot === existingIndex) {
-        inventory.selectedSlot = firstFilledQuickbarSlot(inventory.quickbar);
+    inventory.quickbar[slotIndex] = itemId;
+    inventory.selectedSlot = slotIndex;
+    this.updateHud();
+    this.notifyInventoryChanged();
+  }
+
+  purchaseItem(itemId) {
+    const inventory = this.currentInventory();
+    const item = ITEM_TYPES[itemId];
+
+    if (!item || item.count === Infinity) {
+      return;
+    }
+
+    if (!inventory.items[itemId]) {
+      inventory.items[itemId] = { count: 0 };
+    }
+
+    inventory.items[itemId].count += 1;
+    this.notifyInventoryChanged();
+  }
+
+  sellItem(itemId) {
+    const inventory = this.currentInventory();
+    const itemState = inventory.items[itemId];
+
+    if (!itemState || itemState.count === Infinity || itemState.count <= 0) {
+      return;
+    }
+
+    itemState.count -= 1;
+
+    if (itemState.count === 0) {
+      delete inventory.items[itemId];
+
+      for (let index = 0; index < inventory.quickbar.length; index++) {
+        if (inventory.quickbar[index] === itemId) {
+          inventory.quickbar[index] = null;
+        }
       }
 
-      this.updateHud();
-      this.notifyInventoryChanged();
-      return;
+      inventory.selectedSlot = firstFilledQuickbarSlot(inventory.quickbar);
     }
 
-    const emptyIndex = inventory.quickbar.indexOf(null);
-
-    if (emptyIndex === -1 || !inventory.items[itemId]) {
-      return;
-    }
-
-    inventory.quickbar[emptyIndex] = itemId;
     this.updateHud();
     this.notifyInventoryChanged();
   }
@@ -820,6 +853,17 @@ function setText(element, text) {
   if (element && element.textContent !== text) {
     element.textContent = text;
   }
+}
+
+function isUiInputTarget(target) {
+  // When Daniel is typing in a form field, the game should let the browser
+  // handle the key. Otherwise W/A/S/D, arrows, and Space would still aim/fire.
+  if (!target) {
+    return false;
+  }
+
+  const tagName = target.tagName;
+  return target.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || tagName === 'BUTTON';
 }
 
 function setTitle(element, title) {

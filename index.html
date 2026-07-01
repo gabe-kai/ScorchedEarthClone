@@ -63,8 +63,7 @@
           <h2>Settings</h2>
           <button class="settings-button" type="button" data-modal-target="newGameModal"><span class="button-icon">N</span>New Game</button>
           <button class="settings-button" type="button" data-modal-target="playerSetupModal"><span class="button-icon">P</span>Player Setup</button>
-          <button class="settings-button" type="button" data-modal-target="tankDesignerModal"><span class="button-icon">T</span>Tank Designer</button>
-          <button class="settings-button" type="button" data-modal-target="ammoDesignerModal"><span class="button-icon">A</span>Ammo Designer</button>
+          <button class="settings-button" type="button" data-modal-target="designerModal"><span class="button-icon">D</span>Designer</button>
         </section>
       </aside>
     </main>
@@ -85,26 +84,187 @@
       </form>
     </dialog>
 
-    <dialog id="tankDesignerModal" class="modal">
+    <dialog id="designerModal" class="modal designer-modal">
       <form method="dialog">
-        <h2>Tank Designer</h2>
-        <p>This will hold tank model selection and graph-paper point editing.</p>
-        <button type="submit">Close</button>
-      </form>
-    </dialog>
+        <div class="modal-header">
+          <h2>Designer</h2>
+          <button type="submit">Close</button>
+        </div>
 
-    <dialog id="ammoDesignerModal" class="modal">
-      <form method="dialog">
-        <h2>Ammo Designer</h2>
-        <p>This will hold ammo names, damage, blast radius, terrain damage, speed, and wind settings.</p>
-        <button type="submit">Close</button>
+        <div class="designer-tabs" role="tablist" aria-label="Designer tools">
+          <button class="designer-tab" type="button" data-designer-tab="tank">Tank Designer</button>
+          <button class="designer-tab is-selected" type="button" data-designer-tab="ammo">Ammo Designer</button>
+          <button class="designer-tab" type="button" data-designer-tab="item">Item Designer</button>
+        </div>
+
+        <div id="tankDesignerPanel" class="designer-panel" data-designer-panel="tank">
+          <div class="tank-designer">
+            <section class="designer-list-panel" aria-label="Tank models">
+              <div class="designer-button-row">
+                <button id="newTankButton" class="designer-new-button" type="button">New Tank</button>
+                <button id="newTurretButton" class="designer-new-button" type="button">New Turret</button>
+              </div>
+              <div id="tankDesignerList" class="designer-list"></div>
+            </section>
+
+            <section class="designer-detail-panel" aria-label="Tank model details">
+              <div class="field-grid tank-field-grid">
+                <label>
+                  <span>Name</span>
+                  <input id="tankNameInput" type="text" maxlength="28">
+                </label>
+                <label>
+                  <span>Kind</span>
+                  <select id="tankKindInput">
+                    <option value="tank">Tank</option>
+                    <option value="turret">Turret</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Body Color</span>
+                  <input id="tankBodyColorInput" type="color">
+                </label>
+                <label>
+                  <span>Cab Color</span>
+                  <input id="tankCabColorInput" type="color">
+                </label>
+                <label class="checkbox-field">
+                  <span>Can Move</span>
+                  <input id="tankCanMoveInput" type="checkbox">
+                </label>
+                <label class="checkbox-field">
+                  <span>Flip Past Edge</span>
+                  <input id="tankFlipInput" type="checkbox">
+                </label>
+                <label>
+                  <span>Cannon Style</span>
+                  <select id="tankCannonStyleInput">
+                    <option value="oneSide">One Side</option>
+                    <option value="topArc">Top Hemisphere</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Angle Range</span>
+                  <div class="inline-inputs">
+                    <input id="tankMinAngleInput" type="number" min="0" max="180" step="1">
+                    <input id="tankMaxAngleInput" type="number" min="0" max="180" step="1">
+                  </div>
+                </label>
+                <label>
+                  <span>Pivot X</span>
+                  <input id="tankPivotXInput" type="number" min="-80" max="80" step="1">
+                </label>
+                <label>
+                  <span>Pivot Y</span>
+                  <input id="tankPivotYInput" type="number" min="-80" max="20" step="1">
+                </label>
+              </div>
+
+              <div class="point-editor-grid">
+                <label>
+                  <span>Body Points</span>
+                  <textarea id="tankBodyPointsInput" rows="8" spellcheck="false"></textarea>
+                </label>
+                <label>
+                  <span>Cab Points</span>
+                  <textarea id="tankCabPointsInput" rows="8" spellcheck="false"></textarea>
+                </label>
+              </div>
+
+              <div class="tank-preview">
+                <canvas id="tankDesignerPreview" width="520" height="260"></canvas>
+                <div class="tank-preview-note">
+                  <strong id="tankPreviewName">Tank Preview</strong>
+                  <span id="tankPreviewStats"></span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div id="ammoDesignerPanel" class="designer-panel is-selected" data-designer-panel="ammo">
+          <div class="ammo-designer">
+            <section class="ammo-list-panel" aria-label="Ammo types">
+              <button id="newAmmoButton" class="ammo-new-button" type="button">New Ammo</button>
+              <div id="ammoDesignerList" class="ammo-designer-list"></div>
+            </section>
+
+            <section class="ammo-detail-panel" aria-label="Ammo details">
+              <div class="field-grid">
+                <label>
+                  <span>Name</span>
+                  <input id="ammoNameInput" type="text" maxlength="24">
+                </label>
+                <label>
+                  <span>Letter</span>
+                  <input id="ammoIconInput" type="text" maxlength="2">
+                </label>
+                <label>
+                  <span>Shot Color</span>
+                  <input id="ammoShotColorInput" type="color">
+                </label>
+                <label>
+                  <span>Hit Color</span>
+                  <input id="ammoHitColorInput" type="color">
+                </label>
+                <label>
+                  <span>Miss Color</span>
+                  <input id="ammoMissColorInput" type="color">
+                </label>
+                <label>
+                  <span>Explosion Size</span>
+                  <input id="ammoExplosionInput" type="range" min="20" max="90" step="1">
+                </label>
+                <label>
+                  <span>Divot</span>
+                  <input id="ammoDivotInput" type="range" min="0" max="3" step="0.1">
+                </label>
+                <label>
+                  <span>Direct Hit / Max Damage</span>
+                  <input id="ammoDamageInput" type="number" min="0" max="100" step="1">
+                </label>
+                <label>
+                  <span>Purchase Quantity</span>
+                  <select id="ammoInventoryInput">
+                    <option value="Infinity">Infinite</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="5">5</option>
+                    <option value="10">10</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Price</span>
+                  <input id="ammoPriceInput" type="number" min="0" step="1">
+                </label>
+              </div>
+
+              <div class="ammo-preview">
+                <div class="ammo-preview-icon" id="ammoPreviewIcon">B</div>
+                <div>
+                  <strong id="ammoPreviewName">Basic Shot</strong>
+                  <p id="ammoPreviewStats"></p>
+                </div>
+                <div class="ammo-preview-blasts">
+                  <span id="ammoPreviewHit" class="blast-preview hit-preview"></span>
+                  <span id="ammoPreviewMiss" class="blast-preview miss-preview"></span>
+                  <span id="ammoPreviewDivot" class="divot-preview"></span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div id="itemDesignerPanel" class="designer-panel" data-designer-panel="item">
+          <p>This will hold future tools like repair kits, shields, wind scanners, and other inventory items.</p>
+        </div>
       </form>
     </dialog>
 
     <dialog id="inventoryModal" class="modal inventory-modal">
       <form method="dialog">
         <h2>Inventory</h2>
-        <p>Click an item to add it to the quickbar. Click it again to remove it.</p>
         <div id="inventoryList" class="inventory-list"></div>
         <button type="submit">Close</button>
       </form>

@@ -2,6 +2,12 @@
 //
 // Items are things a player can carry. Some items are ammo and can be fired.
 // Later, other items can repair tanks, create shields, scan wind, and so on.
+//
+// The Ammo Designer reads these ammo fields:
+// - colors control the shot and impact previews
+// - blastRadius is the visible explosion size
+// - terrainDamage is how much ground should be carved away
+// - damage and price are balance numbers we can tune as the game grows
 
 export const ITEM_TYPES = {
   basicShot: {
@@ -10,11 +16,15 @@ export const ITEM_TYPES = {
     icon: 'B',
     count: Infinity,
     projectileRadius: 4,
+    shotColor: '#20272d',
+    hitColor: '#ff3b2f',
+    missColor: '#ff8c2a',
     damage: 20,
     blastRadius: 40,
     terrainDamage: 1,
     speedMultiplier: 1,
     windMultiplier: 1,
+    price: 20,
     description: 'A reliable cannonball with normal speed and blast size.'
   },
   heavyShell: {
@@ -23,11 +33,15 @@ export const ITEM_TYPES = {
     icon: 'H',
     count: 3,
     projectileRadius: 6,
+    shotColor: '#252a2f',
+    hitColor: '#ff5f2e',
+    missColor: '#d9a441',
     damage: 35,
     blastRadius: 58,
     terrainDamage: 1.4,
     speedMultiplier: 0.85,
     windMultiplier: 0.8,
+    price: 42,
     description: 'A slower, heavier shot with a bigger blast.'
   },
   digger: {
@@ -36,11 +50,15 @@ export const ITEM_TYPES = {
     icon: 'D',
     count: 2,
     projectileRadius: 4,
+    shotColor: '#31351f',
+    hitColor: '#d2b35e',
+    missColor: '#8b6f34',
     damage: 8,
     blastRadius: 34,
     terrainDamage: 2,
     speedMultiplier: 1,
     windMultiplier: 1.1,
+    price: 28,
     description: 'A terrain-focused shot for making deeper craters.'
   },
   repairKit: {

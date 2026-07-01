@@ -81,20 +81,6 @@ test('deformTerrainAt digs nearby terrain downward', () => {
   assert.equal(game.terrain[farIndex], farBefore);
 });
 
-test('toggleQuickbarItem removes and adds inventory items', () => {
-  const game = createGame();
-
-  assert.equal(game.quickbarItems()[1].itemId, 'heavyShell');
-
-  game.toggleQuickbarItem('heavyShell');
-
-  assert.equal(game.quickbarItems()[1].itemId, null);
-
-  game.toggleQuickbarItem('repairKit');
-
-  assert.equal(game.quickbarItems()[1].itemId, 'repairKit');
-});
-
 test('selectQuickbarSlot changes selected item', () => {
   const game = createGame();
 
@@ -111,4 +97,26 @@ test('fire consumes finite ammo from inventory', () => {
   game.fire();
 
   assert.equal(inventory.items.heavyShell.count, 2);
+});
+
+test('purchaseItem and sellItem change inventory quantity', () => {
+  const game = createGame();
+  const inventory = game.currentInventory();
+
+  assert.equal(inventory.items.heavyShell.count, 3);
+
+  game.purchaseItem('heavyShell');
+  assert.equal(inventory.items.heavyShell.count, 4);
+
+  game.sellItem('heavyShell');
+  assert.equal(inventory.items.heavyShell.count, 3);
+});
+
+test('assignQuickbarSlot replaces a quickbar item', () => {
+  const game = createGame();
+
+  game.assignQuickbarSlot('repairKit', 1);
+
+  assert.equal(game.quickbarItems()[1].itemId, 'repairKit');
+  assert.equal(game.selectedItemId(), 'repairKit');
 });
