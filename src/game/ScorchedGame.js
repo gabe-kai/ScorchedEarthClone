@@ -1,4 +1,4 @@
-import { angleToVector, cannonTip, turnCannon } from '../math/aiming.js';
+import { angleToVector, cannonTip, clampAngle, turnCannon } from '../math/aiming.js';
 import { createProjectile, moveProjectile, projectileHitTank } from '../physics/projectile.js';
 import { createStartingInventory, ITEM_TYPES } from './itemTypes.js';
 import { TANK_MODELS } from './tankModels.js';
@@ -17,7 +17,9 @@ const MIN_POWER = 80;
 const MAX_POWER = 520;
 const TERRAIN_STEP = 8;
 const IMPACT_DURATION_SECONDS = 0.45;
+const FLOATER_DURATION_SECONDS = 1.1;
 const SELF_HIT_GRACE_SECONDS = 0.25;
+const TANK_MAX_HEALTH = 100;
 const CRATER_RADIUS = 40;
 const CRATER_DEPTH = 50;
 const MIN_TERRAIN_Y = 120;
@@ -63,6 +65,13 @@ export class ScorchedGame {
     this.handleVisibilityChange = () => this.onVisibilityChange();
     this.handlePageHide = () => this.stop();
     this.inventoryChangeHandler = null;
+    this.tankModels = TANK_MODELS;
+    this.playerSetup = [
+      { name: 'Player 1', modelId: 'p1Custom', color: '#d45745' },
+      { name: 'Player 2', modelId: 'p2Custom', color: '#4d8ad8' }
+    ];
+    this.matchRounds = 3;
+    this.scoreboard = createScoreboard(this.playerSetup);
 
     this.roundNumber = 0;
 
@@ -78,6 +87,69 @@ export class ScorchedGame {
     if (this.inventoryChangeHandler) {
       this.inventoryChangeHandler();
     }
+  }
+
+  setTankModels(tankModels) {
+    // The Tank Designer can create a live library of tank models.
+    // The game keeps a reference here so the HUD and canvas use designer edits.
+    this.tankModels = tankModels;
+
+    if (this.players) {
+      this.players.forEach((tank) => this.refreshTankModel(tank));
+    }
+
+    this.updateHud();
+  }
+
+  setPlayerSetup(playerSetup) {
+    // Player Setup chooses each player's display name and tank model.
+    // Applying it here updates the current round without resetting shots,
+    // terrain, inventory, or health.
+    this.playerSetup = playerSetup.map((player, index) => ({
+      name: player.name || `Player ${index + 1}`,
+      modelId: player.modelId || (index === 0 ? 'p1Custom' : 'p2Custom'),
+      color: player.color || (index === 0 ? '#d45745' : '#4d8ad8')
+    }));
+    this.scoreboard.forEach((score, index) => {
+      score.name = this.playerSetup[index].name;
+    });
+
+    if (this.players) {
+      this.players.forEach((tank, index) => {
+        tank.name = this.playerSetup[index].name;
+        tank.modelId = this.playerSetup[index].modelId;
+        tank.playerColor = this.playerSetup[index].color;
+        this.refreshTankModel(tank);
+      });
+    }
+
+    this.message = `${this.currentTank().name}'s turn.`;
+    this.updateHud();
+    this.notifyInventoryChanged();
+  }
+
+  startMatch(playerSetup, matchRounds = this.matchRounds) {
+    // A match is the bigger container around several rounds.
+    // Starting a match applies setup, clears the scoreboard, and begins round 1.
+    this.playerSetup = playerSetup.map((player, index) => ({
+      name: player.name || `Player ${index + 1}`,
+      modelId: player.modelId || (index === 0 ? 'p1Custom' : 'p2Custom'),
+      color: player.color || (index === 0 ? '#d45745' : '#4d8ad8')
+    }));
+    this.matchRounds = Math.max(1, Math.round(matchRounds || 1));
+    this.scoreboard = createScoreboard(this.playerSetup);
+    this.roundNumber = 0;
+    this.reset();
+    this.updateHud();
+    this.notifyInventoryChanged();
+  }
+
+  completedRounds() {
+    return this.scoreboard.reduce((total, score) => total + score.roundsWon, 0);
+  }
+
+  isMatchComplete() {
+    return this.completedRounds() >= this.matchRounds;
   }
 
   start() {
@@ -155,8 +227,8 @@ export class ScorchedGame {
     // Put two tanks on opposite sides of the battlefield.
     // The last number is the starting cannon angle in degrees.
     this.players = [
-      this.createTank('Player 1', 190, 'p1Custom', 35),
-      this.createTank('Player 2', 1090, 'p2Custom', 145)
+      this.createTank(this.playerSetup[0].name, 190, this.playerSetup[0].modelId, 35, this.playerSetup[0].color, 1),
+      this.createTank(this.playerSetup[1].name, 1090, this.playerSetup[1].modelId, 145, this.playerSetup[1].color, -1)
     ];
 
     // Player 1 starts because arrays count from 0 in JavaScript.
@@ -169,24 +241,30 @@ export class ScorchedGame {
     // It will look like: { x, y, kind, age, endsTurn, endsRound }
     this.impact = null;
 
-    // A tank hit ends the round until R resets.
+    // floaters are little words or numbers that rise and fade away.
+    this.floaters = [];
+
+    // A tank hit ends the round until the New Game button starts a fresh one.
     this.roundOver = false;
 
     // Pick a new random wind value for this round.
     this.wind = randomWind();
 
     // Message shown in the HUD.
-    this.message = 'Player 1: aim with arrows, fire with Space.';
+    this.message = `${this.players[0].name}: aim with arrows, fire with Space.`;
   }
 
-  createTank(name, x, modelId, angle) {
+  createTank(name, x, modelId, angle, playerColor, preferredFacing) {
     // This function builds a plain object that stores one tank's state.
     //
     // Tricky bit:
     // x is the middle of the tank.
     // y is the ground point under the tank.
     // The drawing code uses those values to calculate the body and cab.
-    const model = TANK_MODELS[modelId];
+    const model = this.modelFor(modelId);
+    const facing = startingFacing(model, preferredFacing);
+    const localAngle = worldAngleToLocal(angle, facing);
+    const clampedAngle = clampAngle(localAngle, model.cannon?.minAngle ?? 5, model.cannon?.maxAngle ?? 175);
 
     return {
       name,
@@ -194,12 +272,29 @@ export class ScorchedGame {
       y: GROUND_Y,
       width: model.collision.width,
       height: model.collision.height,
-      health: 100,
-      angle,
+      maxHealth: TANK_MAX_HEALTH,
+      health: TANK_MAX_HEALTH,
+      destroyed: false,
+      angle: clampedAngle,
+      facing,
       power: 240,
       modelId,
+      playerColor,
       inventory: createStartingInventory()
     };
+  }
+
+  modelFor(modelId) {
+    return this.tankModels[modelId] || this.tankModels.p1Custom || Object.values(this.tankModels)[0];
+  }
+
+  refreshTankModel(tank) {
+    tank.modelId = this.tankModels[tank.modelId] ? tank.modelId : Object.keys(this.tankModels)[0];
+    const model = this.modelFor(tank.modelId);
+    tank.facing = startingFacing(model, tank.facing || 1);
+    tank.angle = clampAngle(tank.angle, model.cannon?.minAngle ?? 5, model.cannon?.maxAngle ?? 175);
+    tank.width = model.collision.width;
+    tank.height = model.collision.height;
   }
 
   onKeyDown(event) {
@@ -212,13 +307,6 @@ export class ScorchedGame {
     // preventDefault stops that so the keys only control the game.
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space'].includes(event.code)) {
       event.preventDefault();
-    }
-
-    // R resets the whole round immediately.
-    if (event.code === 'KeyR') {
-      this.reset();
-      this.notifyInventoryChanged();
-      return;
     }
 
     // Space fires one shot. It is handled immediately instead of being stored.
@@ -270,6 +358,8 @@ export class ScorchedGame {
   }
 
   update(deltaSeconds) {
+    this.updateFloaters(deltaSeconds);
+
     // If a cannon ball exists, it gets the whole update.
     // Players cannot aim or fire again until the shot is over.
     if (this.projectile) {
@@ -284,7 +374,7 @@ export class ScorchedGame {
     }
 
     // When the round is over, leave the final message on screen.
-    // R can still reset the round because onKeyDown handles it directly.
+    // The New Game button starts the next round.
     if (this.roundOver) {
       return;
     }
@@ -297,11 +387,11 @@ export class ScorchedGame {
     // turnCannon lives in src/math/aiming.js.
     // The 1 or -1 tells it which direction to rotate.
     if (this.keys.has('ArrowLeft')  || this.keys.has('KeyA')) {
-      tank.angle = turnCannon(tank.angle, 1, CANNON_TURN_SPEED, deltaSeconds);
+      this.turnTankCannon(tank, 1, deltaSeconds);
     }
 
     if (this.keys.has('ArrowRight')  || this.keys.has('KeyD')) {
-      tank.angle = turnCannon(tank.angle, -1, CANNON_TURN_SPEED, deltaSeconds);
+      this.turnTankCannon(tank, -1, deltaSeconds);
     }
 
     // Power controls.
@@ -317,6 +407,26 @@ export class ScorchedGame {
     }
   }
 
+  turnTankCannon(tank, direction, deltaSeconds) {
+    const model = this.modelFor(tank.modelId);
+    const minAngle = model.cannon?.minAngle ?? 5;
+    const maxAngle = model.cannon?.maxAngle ?? 175;
+    const low = Math.min(minAngle, maxAngle);
+    const high = Math.max(minAngle, maxAngle);
+    const localDirection = tank.facing < 0 ? -direction : direction;
+    const nextAngle = tank.angle + localDirection * CANNON_TURN_SPEED * deltaSeconds;
+
+    // One-sided tanks flip only when the cannon tries to rotate over the top
+    // of the tank. Rotating below the front edge just stops at the low limit.
+    if (model.cannon?.flipPastEdge && nextAngle > high) {
+      tank.facing *= -1;
+      tank.angle = high;
+      return;
+    }
+
+    tank.angle = turnCannon(tank.angle, localDirection, CANNON_TURN_SPEED, deltaSeconds, minAngle, maxAngle);
+  }
+
   updateProjectile(deltaSeconds) {
     // MOVE THE CANNON BALL
     //
@@ -329,10 +439,7 @@ export class ScorchedGame {
     // findProjectileTankHit checks enemy hits and delayed self-hits.
     const target = this.findProjectileTankHit();
     if (target) {
-      this.startImpact('tank', this.projectile.x, this.projectile.y, {
-        endsRound: true,
-        message: `${this.currentTank().name} hit ${target.name}! Press R for a new round.`
-      });
+      this.applyTankHit(target, this.projectile.x, this.projectile.y);
 
       // Setting projectile to null means "there is no active cannon ball now."
       this.projectile = null;
@@ -378,8 +485,8 @@ export class ScorchedGame {
     const finishedImpact = this.impact;
     this.impact = null;
 
-    // Tank hits end the round for now.
-    // Ground hits end only the current turn.
+    // A lethal tank hit ends the round.
+    // Non-lethal tank hits and ground hits end only the current turn.
     if (finishedImpact.endsRound) {
       this.roundOver = true;
       return;
@@ -388,6 +495,70 @@ export class ScorchedGame {
     if (finishedImpact.endsTurn) {
       this.nextTurn();
     }
+  }
+
+  updateFloaters(deltaSeconds) {
+    // Floating text is only decoration, so it should clean itself up quickly.
+    this.floaters = this.floaters
+      .map((floater) => ({ ...floater, age: floater.age + deltaSeconds }))
+      .filter((floater) => floater.age < floater.duration);
+  }
+
+  applyTankHit(target, x, y) {
+    // DIRECT HIT DAMAGE
+    //
+    // For now, ammo damage is simple: direct hit removes exactly this many
+    // health points. Blast-radius math can come later when splash damage is
+    // ready to be its own lesson.
+    const attacker = this.currentTank();
+    const ammo = this.projectile?.item || this.selectedItem();
+    const damage = Math.max(0, Math.round(ammo?.damage ?? 0));
+    const actualDamage = Math.min(target.health, damage);
+    const attackerIndex = this.players.indexOf(attacker);
+
+    target.health = Math.max(0, target.health - damage);
+    target.destroyed = target.health <= 0;
+    this.scoreboard[attackerIndex].hits += 1;
+    this.scoreboard[attackerIndex].damageDealt += actualDamage;
+
+    this.addFloater(`-${actualDamage}`, x, y - 12, {
+      color: '#ffd56b',
+      size: 26
+    });
+
+    if (target.destroyed) {
+      this.scoreboard[attackerIndex].roundsWon += 1;
+      const matchComplete = this.isMatchComplete();
+      this.addFloater('KNOCKOUT!', WIDTH / 2, HEIGHT / 2 - 120, {
+        color: attacker.playerColor,
+        size: 48,
+        duration: 1.4
+      });
+      this.startImpact('tank', x, y, {
+        endsRound: true,
+        message: matchComplete
+          ? `${attacker.name} wins the match! Start a new game when ready.`
+          : `${attacker.name} destroyed ${target.name}! Open New Game for the next round.`
+      });
+      return;
+    }
+
+    this.startImpact('tank', x, y, {
+      endsTurn: true,
+      message: `${attacker.name} hit ${target.name} for ${actualDamage} damage.`
+    });
+  }
+
+  addFloater(text, x, y, options = {}) {
+    this.floaters.push({
+      text,
+      x,
+      y,
+      age: 0,
+      duration: options.duration || FLOATER_DURATION_SECONDS,
+      color: options.color || '#ece7db',
+      size: options.size || 22
+    });
   }
 
   startImpact(kind, x, y, options = {}) {
@@ -436,8 +607,9 @@ export class ScorchedGame {
 
     // Find the current tank, then calculate where the cannon barrel ends.
     const tank = this.currentTank();
-    const pivot = tankCannonPivot(tank);
-    const tip = cannonTip(pivot, tank.angle, CANNON_LENGTH);
+    const pivot = tankCannonPivot(tank, this.modelFor(tank.modelId));
+    const worldAngle = tankWorldAngle(tank);
+    const tip = cannonTip(pivot, worldAngle, CANNON_LENGTH);
     const selectedItem = this.selectedItem();
     const selectedItemState = this.selectedItemState();
 
@@ -452,8 +624,9 @@ export class ScorchedGame {
     }
 
     // Create the cannon ball with the current angle and power.
-    this.projectile = createProjectile(tip, angleToVector(tank.angle), tank.power * selectedItem.speedMultiplier);
+    this.projectile = createProjectile(tip, angleToVector(worldAngle), tank.power * selectedItem.speedMultiplier);
     this.projectile.radius = selectedItem.projectileRadius;
+    this.projectile.item = selectedItem;
     this.consumeSelectedItem();
     this.notifyInventoryChanged();
     this.message = `${tank.name} fired ${selectedItem.name}.`;
@@ -640,6 +813,8 @@ export class ScorchedGame {
     if (this.impact) {
       this.drawImpact(ctx, this.impact);
     }
+
+    this.drawFloaters(ctx);
   }
 
   drawSky(ctx) {
@@ -681,23 +856,24 @@ export class ScorchedGame {
     // Canvas x grows to the right.
     // Canvas y grows DOWN, not up.
     // So "higher on screen" means a smaller y number.
-    const model = TANK_MODELS[tank.modelId];
+    const model = this.modelFor(tank.modelId);
 
     // The cannon is drawn as a thick line from pivot to tip.
-    const pivot = tankCannonPivot(tank);
-    const tip = cannonTip(pivot, tank.angle, CANNON_LENGTH);
+    const pivot = tankCannonPivot(tank, model);
+    const tip = cannonTip(pivot, tankWorldAngle(tank), CANNON_LENGTH);
 
     // Draw tank body and cab from graph-paper polygon points.
-    drawPolygon(ctx, tank.x, tank.y, model.body, model.color);
-    drawPolygon(ctx, tank.x, tank.y, model.cab, model.accent);
+    drawPolygon(ctx, tank.x, tank.y, model.body, tank.destroyed ? '#2a2d2e' : model.color, tank.facing);
+    drawPolygon(ctx, tank.x, tank.y, model.cab, tank.destroyed ? '#3a3d3c' : model.accent, tank.facing);
+    this.drawTankDamage(ctx, tank, model);
 
     // Draw cannon barrel.
-    ctx.strokeStyle = '#22252d';
+    ctx.strokeStyle = tank.destroyed ? '#111315' : '#22252d';
     ctx.lineWidth = 8;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(pivot.x, pivot.y);
-    ctx.lineTo(tip.x, tip.y);
+    ctx.lineTo(tank.destroyed ? pivot.x + tank.facing * 18 : tip.x, tank.destroyed ? pivot.y + 10 : tip.y);
     ctx.stroke();
 
     // Draw player name under the tank.
@@ -731,24 +907,32 @@ export class ScorchedGame {
     // The HUD is normal HTML, not canvas drawing.
     // textContent changes what the player sees in each HUD line.
     const tank = this.currentTank();
-    const model = TANK_MODELS[tank.modelId];
+    const model = this.modelFor(tank.modelId);
+    const worldAngle = tankWorldAngle(tank);
     setText(this.hud.roundNumber, `${this.roundNumber}`);
+    setText(this.hud.matchRounds, `${this.matchRounds}`);
     setText(this.hud.turnNumber, `${this.turnNumber}`);
+    setText(this.hud.scorePlayerOneName, this.scoreboard[0].name);
+    setText(this.hud.scorePlayerOneWins, `${this.scoreboard[0].roundsWon}`);
+    setText(this.hud.scorePlayerTwoName, this.scoreboard[1].name);
+    setText(this.hud.scorePlayerTwoWins, `${this.scoreboard[1].roundsWon}`);
     setText(this.hud.status, this.message);
-    setText(this.hud.angle, `${Math.round(tank.angle)} deg`);
+    setText(this.hud.angle, `${Math.round(worldAngle)} deg`);
     setText(this.hud.power, Math.round(tank.power).toString());
     setText(this.hud.playerName, tank.name);
-    setText(this.hud.tankModel, model.name);
-    setText(this.hud.health, `${tank.health}`);
+    setText(this.hud.health, `${tank.health} / ${tank.maxHealth}`);
+    setStyleProperty(this.hud.healthFill, '--health-percent', tank.health / tank.maxHealth);
+    setStyleProperty(this.hud.healthFill, '--health-color', healthColor(tank.health / tank.maxHealth));
+    this.drawHudTankPreview(tank, model);
 
     if (this.hud.playerPanel) {
-      setStyleProperty(this.hud.playerPanel, '--player-color', model.color);
-      setStyleProperty(this.hud.playerPanel, '--player-glow', hexToRgba(model.color, 0.24));
+      setStyleProperty(this.hud.playerPanel, '--player-color', tank.playerColor);
+      setStyleProperty(this.hud.playerPanel, '--player-glow', hexToRgba(tank.playerColor, 0.24));
     }
 
     if (this.canvas.style) {
-      setStyleProperty(this.canvas, '--active-player-color', model.color);
-      setStyleProperty(this.canvas, '--active-player-glow', hexToRgba(model.color, 0.32));
+      setStyleProperty(this.canvas, '--active-player-color', tank.playerColor);
+      setStyleProperty(this.canvas, '--active-player-glow', hexToRgba(tank.playerColor, 0.32));
     }
 
     if (this.hud.aimGauge) {
@@ -757,16 +941,107 @@ export class ScorchedGame {
       const powerPercent = (tank.power - MIN_POWER) / (MAX_POWER - MIN_POWER);
       const windPercent = Math.min(Math.abs(this.wind) / 35, 1);
       const windDirection = Math.sign(this.wind);
-      setStyleProperty(this.hud.aimGauge, '--aim-angle', `${tank.angle}deg`);
+      setStyleProperty(this.hud.aimGauge, '--aim-angle', `${worldAngle}deg`);
       setStyleProperty(this.hud.aimGauge, '--power-percent', powerPercent);
       setStyleProperty(this.hud.aimGauge, '--power-color', powerColor(powerPercent));
       setStyleProperty(this.hud.aimGauge, '--wind-strength', windPercent);
       setStyleProperty(this.hud.aimGauge, '--wind-arrow-rotation', windDirection < 0 ? '180deg' : '0deg');
-      setTitle(this.hud.aimGauge, `Angle ${Math.round(tank.angle)} deg | Power ${Math.round(tank.power)} | Wind ${this.wind.toFixed(1)}`);
+      setTitle(this.hud.aimGauge, `Angle ${Math.round(worldAngle)} deg | Power ${Math.round(tank.power)} | Wind ${this.wind.toFixed(1)}`);
     }
 
     if (this.hud.windValue) {
       setText(this.hud.windValue, `${Math.abs(this.wind).toFixed(1)} mph`);
+    }
+  }
+
+  drawHudTankPreview(tank, model) {
+    const canvas = this.hud.tankHudPreview;
+
+    if (!canvas) {
+      return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    const origin = { x: canvas.width / 2, y: canvas.height - 9 };
+    const scale = 1.35;
+    const previewTank = {
+      ...tank,
+      x: origin.x,
+      y: origin.y,
+      width: model.collision.width * scale,
+      height: model.collision.height * scale
+    };
+    const previewModel = {
+      ...model,
+      collision: {
+        width: model.collision.width * scale,
+        height: model.collision.height * scale
+      }
+    };
+    const pivot = {
+      x: previewTank.x + model.cannonPivot.x * scale * tank.facing,
+      y: previewTank.y + model.cannonPivot.y * scale
+    };
+    const tip = cannonTip(pivot, tankWorldAngle(tank), CANNON_LENGTH * scale);
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawScaledPolygon(ctx, previewTank.x, previewTank.y, model.body, tank.destroyed ? '#2a2d2e' : model.color, tank.facing, scale);
+    drawScaledPolygon(ctx, previewTank.x, previewTank.y, model.cab, tank.destroyed ? '#3a3d3c' : model.accent, tank.facing, scale);
+    this.drawTankDamage(ctx, previewTank, previewModel);
+
+    ctx.strokeStyle = tank.destroyed ? '#111315' : '#22252d';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pivot.x, pivot.y);
+    ctx.lineTo(tank.destroyed ? pivot.x + tank.facing * 14 : tip.x, tank.destroyed ? pivot.y + 7 : tip.y);
+    ctx.stroke();
+  }
+
+  drawTankDamage(ctx, tank, model) {
+    // DAMAGE MARKS
+    //
+    // These marks do not change Daniel's tank points.
+    // They are just extra drawings on top of the tank, based on health.
+    const healthPercent = tank.health / tank.maxHealth;
+
+    if (healthPercent > 0.75) {
+      return;
+    }
+
+    const markX = tank.x - tank.facing * model.collision.width * 0.16;
+    const markY = tank.y - model.collision.height * 0.55;
+
+    drawScorch(ctx, markX, markY, 7);
+
+    if (healthPercent <= 0.5) {
+      drawScorch(ctx, tank.x + tank.facing * model.collision.width * 0.18, tank.y - model.collision.height * 0.34, 9);
+    }
+
+    if (healthPercent <= 0.25) {
+      drawCrack(ctx, tank.x, tank.y - model.collision.height * 0.78, tank.facing);
+    }
+
+    if (tank.destroyed) {
+      drawSmoke(ctx, tank.x, tank.y - model.collision.height - 8);
+    }
+  }
+
+  drawFloaters(ctx) {
+    for (const floater of this.floaters) {
+      const progress = floater.age / floater.duration;
+      const y = floater.y - progress * 42;
+
+      ctx.save();
+      ctx.globalAlpha = 1 - progress;
+      ctx.fillStyle = floater.color;
+      ctx.font = `700 ${floater.size}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+      ctx.strokeText(floater.text, floater.x, y);
+      ctx.fillText(floater.text, floater.x, y);
+      ctx.restore();
     }
   }
 
@@ -842,6 +1117,15 @@ function clampTerrainY(y) {
   return Math.max(MIN_TERRAIN_Y, Math.min(MAX_TERRAIN_Y, y));
 }
 
+function createScoreboard(playerSetup) {
+  return playerSetup.map((player) => ({
+    name: player.name,
+    roundsWon: 0,
+    hits: 0,
+    damageDealt: 0
+  }));
+}
+
 function firstFilledQuickbarSlot(quickbar) {
   const filledIndex = quickbar.findIndex((itemId) => itemId !== null);
   return filledIndex === -1 ? 0 : filledIndex;
@@ -896,17 +1180,45 @@ function powerColor(powerPercent) {
   return `hsl(${hue}, 85%, 58%)`;
 }
 
-function tankCannonPivot(tank) {
+function healthColor(healthPercent) {
+  // Healthy tanks are green, damaged tanks slide toward red.
+  const hue = Math.max(0, Math.min(120, healthPercent * 120));
+  return `hsl(${hue}, 78%, 48%)`;
+}
+
+function startingFacing(model, preferredFacing) {
+  // Tanks with one-sided cannons should start by facing the enemy.
+  // Turrets and full top-arc cannons do not need to flip their artwork.
+  if (!model.cannon?.flipPastEdge) {
+    return 1;
+  }
+
+  return preferredFacing < 0 ? -1 : 1;
+}
+
+function worldAngleToLocal(worldAngle, facing) {
+  // The designer stores a tank's angle as "local" graph-paper math:
+  // 0 points toward the tank's front, 90 points straight up.
+  // When the tank faces left, world 145 degrees becomes local 35 degrees.
+  return facing < 0 ? 180 - worldAngle : worldAngle;
+}
+
+function tankWorldAngle(tank) {
+  // The canvas and projectile math need a world angle:
+  // 0 points right, 90 points up, 180 points left.
+  return tank.facing < 0 ? 180 - tank.angle : tank.angle;
+}
+
+function tankCannonPivot(tank, model) {
   // The pivot is the point where the cannon rotates.
-  // The tank model decides where the cannon sits.
-  const model = TANK_MODELS[tank.modelId];
+  // If the tank faces left, the x coordinate mirrors across the tank center.
   return {
-    x: tank.x + model.cannonPivot.x,
+    x: tank.x + model.cannonPivot.x * (tank.facing || 1),
     y: tank.y + model.cannonPivot.y
   };
 }
 
-function drawPolygon(ctx, originX, originY, points, fillStyle) {
+function drawPolygon(ctx, originX, originY, points, fillStyle, facing = 1) {
   // Draw a shape from graph-paper points.
   //
   // originX/originY is the tank's ground point.
@@ -917,13 +1229,60 @@ function drawPolygon(ctx, originX, originY, points, fillStyle) {
 
   ctx.fillStyle = fillStyle;
   ctx.beginPath();
-  ctx.moveTo(originX + points[0].x, originY + points[0].y);
+  ctx.moveTo(originX + points[0].x * facing, originY + points[0].y);
 
   for (let index = 1; index < points.length; index++) {
-    ctx.lineTo(originX + points[index].x, originY + points[index].y);
+    ctx.lineTo(originX + points[index].x * facing, originY + points[index].y);
   }
 
   ctx.closePath();
+  ctx.fill();
+}
+
+function drawScaledPolygon(ctx, originX, originY, points, fillStyle, facing, scale) {
+  // Same idea as drawPolygon, but for tiny previews.
+  // It avoids building new scaled arrays every animation frame.
+  if (points.length === 0) {
+    return;
+  }
+
+  ctx.fillStyle = fillStyle;
+  ctx.beginPath();
+  ctx.moveTo(originX + points[0].x * facing * scale, originY + points[0].y * scale);
+
+  for (let index = 1; index < points.length; index++) {
+    ctx.lineTo(originX + points[index].x * facing * scale, originY + points[index].y * scale);
+  }
+
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawScorch(ctx, x, y, radius) {
+  ctx.fillStyle = 'rgba(22, 20, 18, 0.72)';
+  ctx.beginPath();
+  ctx.ellipse(x, y, radius * 1.25, radius * 0.8, -0.35, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawCrack(ctx, x, y, facing) {
+  ctx.strokeStyle = 'rgba(12, 13, 14, 0.86)';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x - 2 * facing, y - 7);
+  ctx.lineTo(x + 3 * facing, y - 1);
+  ctx.lineTo(x - 4 * facing, y + 5);
+  ctx.lineTo(x + 5 * facing, y + 10);
+  ctx.stroke();
+}
+
+function drawSmoke(ctx, x, y) {
+  ctx.fillStyle = 'rgba(28, 31, 33, 0.5)';
+  ctx.beginPath();
+  ctx.arc(x - 8, y - 4, 8, 0, Math.PI * 2);
+  ctx.arc(x + 3, y - 13, 10, 0, Math.PI * 2);
+  ctx.arc(x + 13, y - 6, 7, 0, Math.PI * 2);
   ctx.fill();
 }
 

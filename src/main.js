@@ -6,11 +6,17 @@ const canvas = document.querySelector('#game');
 const hud = {
   status: document.querySelector('#status'),
   roundNumber: document.querySelector('#roundNumber'),
+  matchRounds: document.querySelector('#matchRounds'),
   turnNumber: document.querySelector('#turnNumber'),
+  scorePlayerOneName: document.querySelector('#scorePlayerOneName'),
+  scorePlayerOneWins: document.querySelector('#scorePlayerOneWins'),
+  scorePlayerTwoName: document.querySelector('#scorePlayerTwoName'),
+  scorePlayerTwoWins: document.querySelector('#scorePlayerTwoWins'),
   playerPanel: document.querySelector('#playerPanel'),
   playerName: document.querySelector('#playerName'),
-  tankModel: document.querySelector('#tankModel'),
+  tankHudPreview: document.querySelector('#tankHudPreview'),
   health: document.querySelector('#health'),
+  healthFill: document.querySelector('#healthFill'),
   aimGauge: document.querySelector('#aimGauge'),
   windValue: document.querySelector('#windValue'),
   angle: document.querySelector('#angle'),
@@ -30,9 +36,21 @@ const game = new ScorchedGame(canvas, hud);
 window.scorchedGame = game;
 game.start();
 
+const newGameModal = document.querySelector('#newGameModal');
+const startNewGameButton = document.querySelector('#startNewGameButton');
+const nextRoundButton = document.querySelector('#nextRoundButton');
+const matchRoundsInput = document.querySelector('#matchRoundsInput');
 const quickbar = document.querySelector('#quickbar');
 const inventoryModal = document.querySelector('#inventoryModal');
 const inventoryList = document.querySelector('#inventoryList');
+const playerFields = {
+  oneName: document.querySelector('#playerOneNameInput'),
+  oneTank: document.querySelector('#playerOneTankInput'),
+  oneColor: document.querySelector('#playerOneColorInput'),
+  twoName: document.querySelector('#playerTwoNameInput'),
+  twoTank: document.querySelector('#playerTwoTankInput'),
+  twoColor: document.querySelector('#playerTwoColorInput')
+};
 const designerModal = document.querySelector('#designerModal');
 const designerTabs = document.querySelectorAll('[data-designer-tab]');
 const designerPanels = document.querySelectorAll('[data-designer-panel]');
@@ -44,8 +62,6 @@ const tankFields = {
   kind: document.querySelector('#tankKindInput'),
   bodyColor: document.querySelector('#tankBodyColorInput'),
   cabColor: document.querySelector('#tankCabColorInput'),
-  canMove: document.querySelector('#tankCanMoveInput'),
-  flipPastEdge: document.querySelector('#tankFlipInput'),
   cannonStyle: document.querySelector('#tankCannonStyleInput'),
   minAngle: document.querySelector('#tankMinAngleInput'),
   maxAngle: document.querySelector('#tankMaxAngleInput'),
@@ -83,12 +99,14 @@ const ammoPreview = {
 };
 
 const DESIGNER_STORAGE_KEY = 'tanksDesignerState.v1';
+const PLAYER_SETUP_STORAGE_KEY = 'tanksPlayerSetup.v1';
 const savedDesignerState = loadDesignerState();
 
 let tankDesignerItems = createTankDesignerItems(savedDesignerState);
 let selectedTankDesignerId = savedDesignerState?.selectedTankDesignerId || tankDesignerItems[0]?.id || null;
 let ammoDesignerItems = createAmmoDesignerItems(savedDesignerState);
 let selectedAmmoDesignerId = savedDesignerState?.selectedAmmoDesignerId || ammoDesignerItems[0]?.id || null;
+let playerSetup = normalizePlayerSetup(loadPlayerSetup());
 let hoveredInventoryItemId = null;
 
 if (!tankDesignerItems.some((item) => item.id === selectedTankDesignerId)) {
@@ -98,6 +116,8 @@ if (!tankDesignerItems.some((item) => item.id === selectedTankDesignerId)) {
 if (!ammoDesignerItems.some((item) => item.id === selectedAmmoDesignerId)) {
   selectedAmmoDesignerId = ammoDesignerItems[0]?.id || null;
 }
+
+playerSetup = resolvePlayerSetupTankIds(playerSetup);
 
 // SAFETY FOR LONG DEV SESSIONS
 //
@@ -120,8 +140,54 @@ function openInventory() {
   renderInventory();
 
   if (!inventoryModal.open) {
-    inventoryModal.showModal();
+    openCanvasCenteredModal(inventoryModal);
   }
+}
+
+function startNewGame() {
+  updatePlayerSetupFromFields();
+  game.startMatch(playerSetup, Number(matchRoundsInput.value || 1));
+  savePlayerSetup();
+  renderQuickbar();
+
+  if (newGameModal.open) {
+    newGameModal.close();
+  }
+}
+
+function startNextRound() {
+  game.reset();
+  game.notifyInventoryChanged();
+  game.updateHud();
+  renderQuickbar();
+
+  if (newGameModal.open) {
+    newGameModal.close();
+  }
+}
+
+function renderNewGameModal() {
+  renderPlayerSetup();
+  const canContinueMatch = game.roundOver && !game.isMatchComplete();
+  nextRoundButton.hidden = !canContinueMatch;
+}
+
+function openCanvasCenteredModal(modal) {
+  centerModalOnCanvas(modal);
+  modal.showModal();
+}
+
+function centerModalOnCanvas(modal) {
+  // The canvas is not centered in the whole browser window because the HUD
+  // sidebar sits on the right. Use the canvas rectangle so every modal opens
+  // over the play field instead.
+  const canvasRect = canvas.getBoundingClientRect();
+  modal.style.setProperty('--modal-left', `${canvasRect.left + canvasRect.width / 2}px`);
+  modal.style.setProperty('--modal-top', `${canvasRect.top + canvasRect.height / 2}px`);
+}
+
+function centerOpenModalsOnCanvas() {
+  document.querySelectorAll('dialog[open]').forEach(centerModalOnCanvas);
 }
 
 function hotkeyForSlot(index) {
@@ -227,6 +293,145 @@ function renderInventory() {
   }
 }
 
+function loadPlayerSetup() {
+  try {
+    const savedText = localStorage.getItem(PLAYER_SETUP_STORAGE_KEY);
+    return savedText ? JSON.parse(savedText) : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePlayerSetup() {
+  try {
+    localStorage.setItem(PLAYER_SETUP_STORAGE_KEY, JSON.stringify(playerSetup));
+  } catch {
+    // Player setup is convenient, but the game should still run without it.
+  }
+}
+
+function normalizePlayerSetup(savedSetup) {
+  const setup = Array.isArray(savedSetup) ? savedSetup : [];
+
+  return [
+    {
+      name: setup[0]?.name || 'Player 1',
+      modelId: setup[0]?.modelId || 'p1Custom',
+      color: setup[0]?.color || '#d45745'
+    },
+    {
+      name: setup[1]?.name || 'Player 2',
+      modelId: setup[1]?.modelId || 'p2Custom',
+      color: setup[1]?.color || '#4d8ad8'
+    }
+  ];
+}
+
+function resolvePlayerSetupTankIds(setup) {
+  const availableIds = new Set(tankDesignerItems.map((model) => model.id));
+  const fallbackIds = tankDesignerItems.map((model) => model.id);
+
+  return setup.map((player, index) => ({
+    name: player.name || `Player ${index + 1}`,
+    modelId: availableIds.has(player.modelId) ? player.modelId : fallbackIds[index] || fallbackIds[0],
+    color: player.color || (index === 0 ? '#d45745' : '#4d8ad8')
+  }));
+}
+
+function renderPlayerSetup() {
+  playerSetup = resolvePlayerSetupTankIds(playerSetup);
+
+  matchRoundsInput.value = String(game.matchRounds);
+  playerFields.oneName.value = playerSetup[0].name;
+  playerFields.twoName.value = playerSetup[1].name;
+  playerFields.oneColor.value = playerSetup[0].color;
+  playerFields.twoColor.value = playerSetup[1].color;
+  renderTankSelect(playerFields.oneTank, playerSetup[0].modelId);
+  renderTankSelect(playerFields.twoTank, playerSetup[1].modelId);
+}
+
+function renderTankSelect(select, selectedModelId) {
+  select.textContent = '';
+
+  for (const model of tankDesignerItems) {
+    const option = document.createElement('option');
+    option.value = model.id;
+    option.textContent = model.name || 'Unnamed Model';
+    option.selected = model.id === selectedModelId;
+    select.append(option);
+  }
+}
+
+function updatePlayerSetupFromFields() {
+  playerSetup = resolvePlayerSetupTankIds([
+    {
+      name: playerFields.oneName.value.trim() || 'Player 1',
+      modelId: playerFields.oneTank.value,
+      color: playerFields.oneColor.value
+    },
+    {
+      name: playerFields.twoName.value.trim() || 'Player 2',
+      modelId: playerFields.twoTank.value,
+      color: playerFields.twoColor.value
+    }
+  ]);
+
+  savePlayerSetup();
+}
+
+function applyTankLibraryToGame(forcePlayerSetup = false) {
+  game.setTankModels(buildGameTankModels());
+  const resolvedSetup = resolvePlayerSetupTankIds(playerSetup);
+  const setupChanged = playerSetup.some((player, index) => (
+    player.modelId !== resolvedSetup[index].modelId ||
+    player.name !== resolvedSetup[index].name ||
+    player.color !== resolvedSetup[index].color
+  ));
+  playerSetup = resolvedSetup;
+
+  if (forcePlayerSetup || setupChanged) {
+    savePlayerSetup();
+    game.setPlayerSetup(playerSetup);
+  }
+
+  if (newGameModal.open) {
+    renderNewGameModal();
+  }
+
+  renderQuickbar();
+}
+
+function buildGameTankModels() {
+  return Object.fromEntries(tankDesignerItems.map((model) => [model.id, designerTankToGameModel(model)]));
+}
+
+function designerTankToGameModel(model) {
+  return {
+    name: model.name || 'Unnamed Model',
+    type: model.kind,
+    canMove: model.canMove,
+    color: model.bodyColor,
+    accent: model.cabColor,
+    body: clonePoints(model.body),
+    cab: clonePoints(model.cab),
+    cannonPivot: { ...model.cannonPivot },
+    cannon: { ...model.cannon },
+    collision: collisionFromPoints([...model.body, ...model.cab])
+  };
+}
+
+function collisionFromPoints(points) {
+  if (!points.length) {
+    return { width: 32, height: 24 };
+  }
+
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const width = Math.max(12, Math.max(...xs) - Math.min(...xs) + 4);
+  const height = Math.max(12, Math.max(...ys) - Math.min(...ys) + 4);
+  return { width, height };
+}
+
 function loadDesignerState() {
   // localStorage is browser storage.
   // It survives refreshes and dev-server restarts, but it stays on this
@@ -263,7 +468,7 @@ function createTankDesignerItems(savedState) {
     id,
     name: model.name,
     kind: model.type || 'tank',
-    canMove: model.canMove ?? true,
+    canMove: (model.type || 'tank') === 'tank',
     bodyColor: model.color || '#d45745',
     cabColor: model.accent || '#f2b36f',
     body: clonePoints(model.body),
@@ -273,17 +478,19 @@ function createTankDesignerItems(savedState) {
       style: model.cannon?.style || 'oneSide',
       minAngle: model.cannon?.minAngle ?? 5,
       maxAngle: model.cannon?.maxAngle ?? 175,
-      flipPastEdge: model.cannon?.flipPastEdge ?? false
+      flipPastEdge: (model.type || 'tank') === 'tank'
     }
   }));
 }
 
 function normalizeTankDesignerItem(model, index) {
+  const kind = model.kind === 'turret' ? 'turret' : 'tank';
+
   return {
     id: model.id || `savedTank${index}`,
     name: model.name || 'Unnamed Model',
-    kind: model.kind === 'turret' ? 'turret' : 'tank',
-    canMove: model.kind === 'turret' ? false : Boolean(model.canMove ?? true),
+    kind,
+    canMove: kind === 'tank',
     bodyColor: model.bodyColor || '#d45745',
     cabColor: model.cabColor || '#f2b36f',
     body: normalizePoints(model.body),
@@ -294,9 +501,9 @@ function normalizeTankDesignerItem(model, index) {
     },
     cannon: {
       style: model.cannon?.style === 'topArc' ? 'topArc' : 'oneSide',
-      minAngle: clampNumber(Number(model.cannon?.minAngle ?? 5), 0, 180),
-      maxAngle: clampNumber(Number(model.cannon?.maxAngle ?? 175), 0, 180),
-      flipPastEdge: Boolean(model.cannon?.flipPastEdge)
+      minAngle: clampNumber(Number(model.cannon?.minAngle ?? 5), -180, 180),
+      maxAngle: clampNumber(Number(model.cannon?.maxAngle ?? 175), -180, 180),
+      flipPastEdge: kind === 'tank'
     }
   };
 }
@@ -351,8 +558,6 @@ function renderTankDesignerDetails() {
   tankFields.kind.value = model.kind;
   tankFields.bodyColor.value = model.bodyColor;
   tankFields.cabColor.value = model.cabColor;
-  tankFields.canMove.checked = model.canMove;
-  tankFields.flipPastEdge.checked = model.cannon.flipPastEdge;
   tankFields.cannonStyle.value = model.cannon.style;
   tankFields.minAngle.value = model.cannon.minAngle;
   tankFields.maxAngle.value = model.cannon.maxAngle;
@@ -378,7 +583,7 @@ function updateSelectedTankFromFields() {
 
   model.name = tankFields.name.value.trim() || 'Unnamed Model';
   model.kind = tankFields.kind.value;
-  model.canMove = tankFields.canMove.checked;
+  model.canMove = model.kind === 'tank';
   model.bodyColor = tankFields.bodyColor.value;
   model.cabColor = tankFields.cabColor.value;
   model.body = parsedBody.points;
@@ -389,19 +594,15 @@ function updateSelectedTankFromFields() {
   };
   model.cannon = {
     style: tankFields.cannonStyle.value,
-    minAngle: clampNumber(Number(tankFields.minAngle.value || 0), 0, 180),
-    maxAngle: clampNumber(Number(tankFields.maxAngle.value || 180), 0, 180),
-    flipPastEdge: tankFields.flipPastEdge.checked
+    minAngle: clampNumber(Number(tankFields.minAngle.value || 0), -180, 180),
+    maxAngle: clampNumber(Number(tankFields.maxAngle.value || 180), -180, 180),
+    flipPastEdge: model.kind === 'tank'
   };
-
-  if (model.kind === 'turret') {
-    model.canMove = false;
-    tankFields.canMove.checked = false;
-  }
 
   renderTankDesignerList();
   drawTankDesignerPreview(model);
   saveDesignerState();
+  applyTankLibraryToGame();
 }
 
 function addNewTankDesignerItem(kind) {
@@ -423,15 +624,16 @@ function addNewTankDesignerItem(kind) {
     cannonPivot: isTurret ? { x: 0, y: -28 } : { x: 6, y: -24 },
     cannon: {
       style: isTurret ? 'topArc' : 'oneSide',
-      minAngle: isTurret ? 0 : 5,
+      minAngle: isTurret ? 0 : -15,
       maxAngle: isTurret ? 180 : 175,
-      flipPastEdge: false
+      flipPastEdge: !isTurret
     }
   };
 
   tankDesignerItems = [...tankDesignerItems, newModel];
   selectedTankDesignerId = newModel.id;
   saveDesignerState();
+  applyTankLibraryToGame();
   renderTankDesigner();
 }
 
@@ -456,19 +658,20 @@ function drawTankDesignerPreview(model) {
   ctx.lineTo(width - 24, origin.y);
   ctx.stroke();
 
-  drawPreviewArc(ctx, origin, scale, minAngle, maxAngle);
-  drawPreviewPolygon(ctx, origin, scale, model.body, model.bodyColor);
-  drawPreviewPolygon(ctx, origin, scale, model.cab, model.cabColor);
-
   const pivot = {
     x: origin.x + model.cannonPivot.x * scale,
     y: origin.y + model.cannonPivot.y * scale
   };
+  const protractorRadius = Math.min(96, Math.max(58, distanceToCanvasEdge(pivot, width, height) - 12));
   const radians = (previewAngle * Math.PI) / 180;
   const tip = {
     x: pivot.x + Math.cos(radians) * 76,
     y: pivot.y - Math.sin(radians) * 76
   };
+
+  drawPreviewProtractor(ctx, pivot, protractorRadius, minAngle, maxAngle);
+  drawPreviewPolygon(ctx, origin, scale, model.body, model.bodyColor);
+  drawPreviewPolygon(ctx, origin, scale, model.cab, model.cabColor);
 
   ctx.strokeStyle = '#22252d';
   ctx.lineWidth = 10;
@@ -504,24 +707,48 @@ function drawPreviewPolygon(ctx, origin, scale, points, fillStyle) {
   ctx.fill();
 }
 
-function drawPreviewArc(ctx, origin, scale, minAngle, maxAngle) {
-  ctx.strokeStyle = 'rgba(183, 161, 90, 0.44)';
-  ctx.lineWidth = 2;
+function drawPreviewProtractor(ctx, pivot, radius, minAngle, maxAngle) {
+  // The preview protractor is centered on the real cannon pivot.
+  // Muted red is blocked. Accent yellow is the allowed cannon range.
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(137, 76, 70, 0.48)';
+  ctx.lineWidth = 5;
   ctx.beginPath();
-
-  for (let angle = minAngle; angle <= maxAngle; angle += 3) {
-    const radians = (angle * Math.PI) / 180;
-    const x = origin.x + Math.cos(radians) * 24 * scale;
-    const y = origin.y - Math.sin(radians) * 24 * scale;
-
-    if (angle === minAngle) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
-  }
-
+  ctx.arc(pivot.x, pivot.y, radius, 0, Math.PI * 2);
   ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(183, 161, 90, 0.86)';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  // Draw clockwise from the high angle back to the low angle. Because
+  // canvas angles run downward, that paints only the designer's allowed arc.
+  ctx.arc(pivot.x, pivot.y, radius, canvasRadians(maxAngle), canvasRadians(minAngle));
+  ctx.stroke();
+
+  for (let angle = 0; angle < 360; angle += 15) {
+    const majorTick = angle % 45 === 0;
+    const radians = canvasRadians(angle);
+    const innerRadius = radius - (majorTick ? 10 : 6);
+    const outerRadius = radius + 1;
+
+    ctx.strokeStyle = majorTick ? 'rgba(236, 231, 219, 0.62)' : 'rgba(236, 231, 219, 0.28)';
+    ctx.lineWidth = majorTick ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(pivot.x + Math.cos(radians) * innerRadius, pivot.y + Math.sin(radians) * innerRadius);
+    ctx.lineTo(pivot.x + Math.cos(radians) * outerRadius, pivot.y + Math.sin(radians) * outerRadius);
+    ctx.stroke();
+  }
+}
+
+function canvasRadians(angleDegrees) {
+  // Game angles use 0 degrees to the right and 90 degrees upward.
+  // Canvas y grows downward, so positive game angles become negative canvas
+  // angles.
+  return (-angleDegrees * Math.PI) / 180;
+}
+
+function distanceToCanvasEdge(point, width, height) {
+  return Math.min(point.x, width - point.x, point.y, height - point.y);
 }
 
 function clonePoints(points) {
@@ -768,10 +995,13 @@ game.setInventoryChangeHandler(() => {
   }
 });
 
+applyTankLibraryToGame(true);
 renderQuickbar();
 renderTankDesigner();
 renderAmmoDesigner();
 
+addUiListener(startNewGameButton, 'click', startNewGame);
+addUiListener(nextRoundButton, 'click', startNextRound);
 addUiListener(newTankButton, 'click', () => addNewTankDesignerItem('tank'));
 addUiListener(newTurretButton, 'click', () => addNewTankDesignerItem('turret'));
 addUiListener(newAmmoButton, 'click', addNewAmmoDesignerItem);
@@ -821,6 +1051,9 @@ addUiListener(window, 'keydown', (event) => {
   game.selectQuickbarSlot(slotIndex);
 });
 
+addUiListener(window, 'resize', centerOpenModalsOnCanvas);
+addUiListener(window, 'scroll', centerOpenModalsOnCanvas);
+
 document.querySelectorAll('[data-modal-target]').forEach((button) => {
   addUiListener(button, 'click', () => {
     const modal = document.querySelector(`#${button.dataset.modalTarget}`);
@@ -831,7 +1064,11 @@ document.querySelectorAll('[data-modal-target]').forEach((button) => {
         renderAmmoDesigner();
       }
 
-      modal.showModal();
+      if (modal === newGameModal) {
+        renderNewGameModal();
+      }
+
+      openCanvasCenteredModal(modal);
     }
   });
 });

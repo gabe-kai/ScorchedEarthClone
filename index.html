@@ -19,7 +19,17 @@
           <h1>Tanks!</h1>
           <div class="control-row">
             <span>Round / Turn</span>
-            <strong><span id="roundNumber">1</span> / <span id="turnNumber">1</span></strong>
+            <strong><span id="roundNumber">1</span> of <span id="matchRounds">3</span> / <span id="turnNumber">1</span></strong>
+          </div>
+          <div class="scoreboard" aria-label="Round scoreboard">
+            <div class="score-row">
+              <span id="scorePlayerOneName">Player 1</span>
+              <strong id="scorePlayerOneWins">0</strong>
+            </div>
+            <div class="score-row">
+              <span id="scorePlayerTwoName">Player 2</span>
+              <strong id="scorePlayerTwoWins">0</strong>
+            </div>
           </div>
           <p id="status" class="status-line">Loading...</p>
         </section>
@@ -27,11 +37,16 @@
         <section id="playerPanel" class="hud-panel player-panel">
           <div class="player-header">
             <h2 id="playerName">Player 1</h2>
-            <strong id="tankModel">Custom</strong>
+            <canvas id="tankHudPreview" class="tank-hud-preview" width="96" height="56" aria-label="Current tank preview"></canvas>
           </div>
-          <div class="control-row">
-            <span>Health</span>
-            <strong id="health">100</strong>
+          <div class="health-meter" aria-label="Current tank health">
+            <div class="health-meter-header">
+              <span>Health</span>
+              <strong id="health">100 / 100</strong>
+            </div>
+            <div class="health-bar">
+              <div id="healthFill" class="health-fill"></div>
+            </div>
           </div>
           <div id="aimGauge" class="aim-gauge" title="Angle 0 deg | Power 0 | Wind 0">
             <div class="wind-indicator">
@@ -61,26 +76,65 @@
 
         <section class="hud-panel settings-panel">
           <h2>Settings</h2>
-          <button class="settings-button" type="button" data-modal-target="newGameModal"><span class="button-icon">N</span>New Game</button>
-          <button class="settings-button" type="button" data-modal-target="playerSetupModal"><span class="button-icon">P</span>Player Setup</button>
-          <button class="settings-button" type="button" data-modal-target="designerModal"><span class="button-icon">D</span>Designer</button>
+          <button class="settings-button" type="button" data-modal-target="newGameModal">New Game</button>
+          <button class="settings-button" type="button" data-modal-target="designerModal">Designer</button>
         </section>
       </aside>
     </main>
 
-    <dialog id="newGameModal" class="modal">
+    <dialog id="newGameModal" class="modal new-game-modal">
       <form method="dialog">
-        <h2>New Game</h2>
-        <p>This will hold round setup, terrain reset, and starting player options.</p>
-        <button type="submit">Close</button>
-      </form>
-    </dialog>
-
-    <dialog id="playerSetupModal" class="modal">
-      <form method="dialog">
-        <h2>Player Setup</h2>
-        <p>This will hold player names, colors, and local player options.</p>
-        <button type="submit">Close</button>
+        <div class="modal-header">
+          <h2>New Game</h2>
+          <button type="submit">Close</button>
+        </div>
+        <fieldset class="designer-fieldset">
+          <legend>Match</legend>
+          <label class="match-rounds-field">
+            <span>Rounds</span>
+            <input id="matchRoundsInput" type="number" min="1" max="25" step="1" value="3">
+          </label>
+        </fieldset>
+        <div class="player-setup-grid">
+          <fieldset class="designer-fieldset">
+            <legend>Player 1</legend>
+            <div class="player-setup-fields">
+              <label>
+                <span>Name</span>
+                <input id="playerOneNameInput" type="text" maxlength="24">
+              </label>
+              <label>
+                <span>Tank</span>
+                <select id="playerOneTankInput"></select>
+              </label>
+              <label>
+                <span>Player Color</span>
+                <input id="playerOneColorInput" type="color">
+              </label>
+            </div>
+          </fieldset>
+          <fieldset class="designer-fieldset">
+            <legend>Player 2</legend>
+            <div class="player-setup-fields">
+              <label>
+                <span>Name</span>
+                <input id="playerTwoNameInput" type="text" maxlength="24">
+              </label>
+              <label>
+                <span>Tank</span>
+                <select id="playerTwoTankInput"></select>
+              </label>
+              <label>
+                <span>Player Color</span>
+                <input id="playerTwoColorInput" type="color">
+              </label>
+            </div>
+          </fieldset>
+        </div>
+        <div class="modal-actions">
+          <button id="nextRoundButton" type="button" hidden>Next Round</button>
+          <button id="startNewGameButton" type="button">Start New Game</button>
+        </div>
       </form>
     </dialog>
 
@@ -92,9 +146,9 @@
         </div>
 
         <div class="designer-tabs" role="tablist" aria-label="Designer tools">
-          <button class="designer-tab" type="button" data-designer-tab="tank">Tank Designer</button>
-          <button class="designer-tab is-selected" type="button" data-designer-tab="ammo">Ammo Designer</button>
-          <button class="designer-tab" type="button" data-designer-tab="item">Item Designer</button>
+          <button class="designer-tab is-selected" type="button" data-designer-tab="ammo">Ammunition</button>
+          <button class="designer-tab" type="button" data-designer-tab="tank">Tanks &amp; Turrets</button>
+          <button class="designer-tab" type="button" data-designer-tab="item">Items</button>
         </div>
 
         <div id="tankDesignerPanel" class="designer-panel" data-designer-panel="tank">
@@ -108,74 +162,87 @@
             </section>
 
             <section class="designer-detail-panel" aria-label="Tank model details">
-              <div class="field-grid tank-field-grid">
-                <label>
-                  <span>Name</span>
-                  <input id="tankNameInput" type="text" maxlength="28">
-                </label>
-                <label>
-                  <span>Kind</span>
-                  <select id="tankKindInput">
-                    <option value="tank">Tank</option>
-                    <option value="turret">Turret</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Body Color</span>
-                  <input id="tankBodyColorInput" type="color">
-                </label>
-                <label>
-                  <span>Cab Color</span>
-                  <input id="tankCabColorInput" type="color">
-                </label>
-                <label class="checkbox-field">
-                  <span>Can Move</span>
-                  <input id="tankCanMoveInput" type="checkbox">
-                </label>
-                <label class="checkbox-field">
-                  <span>Flip Past Edge</span>
-                  <input id="tankFlipInput" type="checkbox">
-                </label>
-                <label>
-                  <span>Cannon Style</span>
-                  <select id="tankCannonStyleInput">
-                    <option value="oneSide">One Side</option>
-                    <option value="topArc">Top Hemisphere</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Angle Range</span>
-                  <div class="inline-inputs">
-                    <input id="tankMinAngleInput" type="number" min="0" max="180" step="1">
-                    <input id="tankMaxAngleInput" type="number" min="0" max="180" step="1">
+              <div class="tank-form-grid">
+                <div class="tank-top-row">
+                <fieldset class="designer-fieldset identity-fieldset">
+                  <legend>Identity</legend>
+                  <div class="compact-field-grid identity-grid">
+                    <label class="compact-field">
+                      <span>Name</span>
+                      <input id="tankNameInput" type="text" maxlength="28" placeholder="Name">
+                    </label>
+                    <label class="compact-field">
+                      <span>Kind</span>
+                      <select id="tankKindInput">
+                        <option value="tank">Tank</option>
+                        <option value="turret">Turret</option>
+                      </select>
+                    </label>
                   </div>
-                </label>
-                <label>
-                  <span>Pivot X</span>
-                  <input id="tankPivotXInput" type="number" min="-80" max="80" step="1">
-                </label>
-                <label>
-                  <span>Pivot Y</span>
-                  <input id="tankPivotYInput" type="number" min="-80" max="20" step="1">
-                </label>
-              </div>
+                </fieldset>
 
-              <div class="point-editor-grid">
-                <label>
-                  <span>Body Points</span>
-                  <textarea id="tankBodyPointsInput" rows="8" spellcheck="false"></textarea>
-                </label>
-                <label>
-                  <span>Cab Points</span>
-                  <textarea id="tankCabPointsInput" rows="8" spellcheck="false"></textarea>
-                </label>
+                <fieldset class="designer-fieldset paint-fieldset">
+                  <legend>Paint</legend>
+                  <div class="compact-field-grid paint-grid">
+                    <label class="compact-field color-field">
+                      <span>Body</span>
+                      <input id="tankBodyColorInput" type="color">
+                    </label>
+                    <label class="compact-field color-field">
+                      <span>Cab</span>
+                      <input id="tankCabColorInput" type="color">
+                    </label>
+                  </div>
+                </fieldset>
+                </div>
+
+                <fieldset class="designer-fieldset points-fieldset">
+                  <legend>Point Geometry</legend>
+                  <div class="point-editor-grid">
+                    <label class="stacked-field">
+                      <span>Body Points</span>
+                      <textarea id="tankBodyPointsInput" rows="5" spellcheck="false"></textarea>
+                    </label>
+                    <label class="stacked-field">
+                      <span>Cab Points</span>
+                      <textarea id="tankCabPointsInput" rows="5" spellcheck="false"></textarea>
+                    </label>
+                  </div>
+                </fieldset>
               </div>
 
               <div class="tank-preview">
                 <canvas id="tankDesignerPreview" width="520" height="260"></canvas>
-                <div class="tank-preview-note">
+                <div class="tank-preview-side">
                   <strong id="tankPreviewName">Tank Preview</strong>
                   <span id="tankPreviewStats"></span>
+                  <fieldset class="designer-fieldset cannon-fieldset">
+                    <legend>Cannon</legend>
+                    <div class="compact-field-grid preview-cannon-grid">
+                      <label class="stacked-field">
+                        <span>Style</span>
+                        <select id="tankCannonStyleInput">
+                          <option value="oneSide">One Side</option>
+                          <option value="topArc">Top Hemisphere</option>
+                        </select>
+                      </label>
+                      <label class="stacked-field">
+                        <span>Angle</span>
+                        <div class="inline-inputs">
+                          <input id="tankMinAngleInput" type="number" min="-180" max="180" step="1" aria-label="Minimum angle">
+                          <input id="tankMaxAngleInput" type="number" min="-180" max="180" step="1" aria-label="Maximum angle">
+                        </div>
+                      </label>
+                      <label class="stacked-field">
+                        <span>Pivot X:Y</span>
+                        <div class="coordinate-inputs">
+                          <input id="tankPivotXInput" type="number" min="-80" max="80" step="1" aria-label="Pivot X">
+                          <span class="coordinate-separator">:</span>
+                          <input id="tankPivotYInput" type="number" min="-80" max="20" step="1" aria-label="Pivot Y">
+                        </div>
+                      </label>
+                    </div>
+                  </fieldset>
                 </div>
               </div>
             </section>
@@ -190,54 +257,77 @@
             </section>
 
             <section class="ammo-detail-panel" aria-label="Ammo details">
-              <div class="field-grid">
-                <label>
-                  <span>Name</span>
-                  <input id="ammoNameInput" type="text" maxlength="24">
-                </label>
-                <label>
-                  <span>Letter</span>
-                  <input id="ammoIconInput" type="text" maxlength="2">
-                </label>
-                <label>
-                  <span>Shot Color</span>
-                  <input id="ammoShotColorInput" type="color">
-                </label>
-                <label>
-                  <span>Hit Color</span>
-                  <input id="ammoHitColorInput" type="color">
-                </label>
-                <label>
-                  <span>Miss Color</span>
-                  <input id="ammoMissColorInput" type="color">
-                </label>
-                <label>
-                  <span>Explosion Size</span>
-                  <input id="ammoExplosionInput" type="range" min="20" max="90" step="1">
-                </label>
-                <label>
-                  <span>Divot</span>
-                  <input id="ammoDivotInput" type="range" min="0" max="3" step="0.1">
-                </label>
-                <label>
-                  <span>Direct Hit / Max Damage</span>
-                  <input id="ammoDamageInput" type="number" min="0" max="100" step="1">
-                </label>
-                <label>
-                  <span>Purchase Quantity</span>
-                  <select id="ammoInventoryInput">
-                    <option value="Infinity">Infinite</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="5">5</option>
-                    <option value="10">10</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Price</span>
-                  <input id="ammoPriceInput" type="number" min="0" step="1">
-                </label>
+              <div class="ammo-form-grid">
+                <fieldset class="designer-fieldset">
+                  <legend>Identity</legend>
+                  <div class="compact-field-grid ammo-identity-grid">
+                    <label class="compact-field">
+                      <span>Name</span>
+                      <input id="ammoNameInput" type="text" maxlength="24" placeholder="Name">
+                    </label>
+                    <label class="compact-field">
+                      <span>Letter</span>
+                      <input id="ammoIconInput" type="text" maxlength="2" aria-label="Letter">
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset class="designer-fieldset">
+                  <legend>Colors</legend>
+                  <div class="compact-field-grid ammo-color-grid">
+                    <label class="compact-field color-field">
+                      <span>Shot</span>
+                      <input id="ammoShotColorInput" type="color">
+                    </label>
+                    <label class="compact-field color-field">
+                      <span>Hit</span>
+                      <input id="ammoHitColorInput" type="color">
+                    </label>
+                    <label class="compact-field color-field">
+                      <span>Miss</span>
+                      <input id="ammoMissColorInput" type="color">
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset class="designer-fieldset">
+                  <legend>Impact</legend>
+                  <div class="compact-field-grid ammo-impact-grid">
+                    <label class="compact-field">
+                      <span>Explosion</span>
+                      <input id="ammoExplosionInput" type="range" min="20" max="90" step="1">
+                    </label>
+                    <label class="compact-field">
+                      <span>Divot</span>
+                      <input id="ammoDivotInput" type="range" min="0" max="3" step="0.1">
+                    </label>
+                    <label class="compact-field">
+                      <span>Damage</span>
+                      <input id="ammoDamageInput" type="number" min="0" max="100" step="1">
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset class="designer-fieldset">
+                  <legend>Shop</legend>
+                  <div class="compact-field-grid ammo-shop-grid">
+                    <label class="compact-field">
+                      <span>Qty</span>
+                      <select id="ammoInventoryInput">
+                        <option value="Infinity">Infinite</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="5">5</option>
+                        <option value="10">10</option>
+                      </select>
+                    </label>
+                    <label class="compact-field">
+                      <span>Price</span>
+                      <input id="ammoPriceInput" type="number" min="0" step="1">
+                    </label>
+                  </div>
+                </fieldset>
               </div>
 
               <div class="ammo-preview">

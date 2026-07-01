@@ -6,6 +6,10 @@ test('clampAngle keeps the cannon inside the playable range', () => {
   assert.equal(clampAngle(-20), 5);
   assert.equal(clampAngle(200), 175);
   assert.equal(clampAngle(45), 45);
+  assert.equal(clampAngle(120, 0, 85), 85);
+  assert.equal(clampAngle(-5, 0, 85), 0);
+  assert.equal(clampAngle(-30, -45, 85), -30);
+  assert.equal(clampAngle(-90, -45, 85), -45);
 });
 
 test('angleToVector points right at 0 degrees and up at 90 degrees', () => {

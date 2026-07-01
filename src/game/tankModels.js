@@ -40,7 +40,7 @@ export const TANK_MODELS = {
       style: 'oneSide',
       minAngle: 5,
       maxAngle: 175,
-      flipPastEdge: false
+      flipPastEdge: true
     },
     collision: { width: 44, height: 24 }
   },
@@ -70,7 +70,7 @@ export const TANK_MODELS = {
       style: 'oneSide',
       minAngle: 5,
       maxAngle: 175,
-      flipPastEdge: false
+      flipPastEdge: true
     },
     collision: { width: 44, height: 26 }
   },
