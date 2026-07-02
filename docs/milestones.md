@@ -55,16 +55,33 @@ Status: next.
 - Make uphill driving cost more fuel.
 - Improve water-depth rules.
 
-## Milestone 6: Computer Player
+## Milestone 6: LAN Multiplayer
+
+Status: prototype foundation done.
+
+- One Node server can host multiple LAN rooms.
+- Players can create rooms, browse rooms, join slots, mark ready, and start.
+- Live LAN matches run on the server after the start handshake.
+- Browser refresh can reclaim the same active slot.
+- Active games pause on disconnect and resume after reconnect.
+- Stuck start handshakes and abandoned rooms are cleaned up.
+
+Next polish:
+
+- Move initial match creation fully onto the server.
+- Add visible turn timers.
+- Add better room names or room codes in the UI.
+
+## Milestone 7: Computer Player
 
 Status: future.
 
 - Add a simple AI that tries random angle and power.
 - Improve AI by adjusting based on the previous miss.
 
-## Milestone 7: Online Later
+## Milestone 8: Online Later
 
 Status: future.
 
-- Keep this out of the first version.
-- Local multiplayer should stay fun before networking begins.
+- Keep accounts, friends, and internet hosting out of the first kid-focused version.
+- LAN multiplayer should stay fun before we turn this into a larger online platform.

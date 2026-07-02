@@ -2,7 +2,16 @@ import { ScorchedGame } from '../src/game/ScorchedGame.js';
 
 const SERVER_TICK_SECONDS = 1 / 30;
 
+// Run the browser game rules on the Node server.
+//
+// The real ScorchedGame normally expects a canvas and HUD. This wrapper gives
+// it fake canvas/HUD objects so the server can update the game state without
+// opening a browser window.
 export class HeadlessScorchedGame {
+  // Create a server game from the snapshot sent by the room creator.
+  //
+  // The snapshot includes tanks, terrain, wind, inventory, and custom designer
+  // data. After this point the server becomes the source of truth.
   constructor(initialSnapshot) {
     this.game = new ScorchedGame(createNoopCanvas(), createNoopHud());
     this.game.applySnapshot(initialSnapshot);
@@ -10,19 +19,32 @@ export class HeadlessScorchedGame {
     this.game.setSnapshotOnly(false);
   }
 
+  // Apply one player's command to the server game.
+  //
+  // Example commands are keyDown, keyUp, fire, and quickbar actions.
   applyCommand(command) {
     this.game.applyCommand(command);
   }
 
+  // Advance the server game by one small slice of time.
+  //
+  // This replaces requestAnimationFrame on the server.
   tick() {
     this.game.update(SERVER_TICK_SECONDS);
   }
 
+  // Return a plain object that browsers can draw.
+  //
+  // The server broadcasts this snapshot to every player in the room.
   snapshot() {
     return this.game.snapshot();
   }
 }
 
+// Fake the game canvas for Node.
+//
+// ScorchedGame asks for getContext('2d'), so we return an object that has all
+// the drawing methods but does nothing when they are called.
 function createNoopCanvas() {
   return {
     width: 1280,
@@ -32,6 +54,10 @@ function createNoopCanvas() {
   };
 }
 
+// Fake the HUD for Node.
+//
+// The server does not show a sidebar, but ScorchedGame still writes status,
+// health, wind, and similar values during updates.
 function createNoopHud() {
   return {
     status: createNoopElement(),
@@ -57,6 +83,7 @@ function createNoopHud() {
   };
 }
 
+// Fake an HTML element with text, title, and style fields.
 function createNoopElement() {
   return {
     textContent: '',
@@ -65,6 +92,9 @@ function createNoopElement() {
   };
 }
 
+// Fake CSS style storage.
+//
+// This lets setProperty/getPropertyValue work without a real DOM.
 function createNoopStyle() {
   const values = new Map();
 
@@ -74,6 +104,10 @@ function createNoopStyle() {
   };
 }
 
+// Fake CanvasRenderingContext2D.
+//
+// Any drawing method that ScorchedGame calls becomes a no-op function. A Proxy
+// catches unknown method names so a new drawing call will not crash the server.
 function createNoopContext() {
   const noop = () => {};
   const context = {

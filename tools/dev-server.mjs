@@ -120,6 +120,10 @@ server.listen(port, '0.0.0.0', () => {
   }
 });
 
+// Handle one JSON message from one browser.
+//
+// This is the server's traffic controller. It checks the message type, finds
+// the right room, and then updates room/game state or sends a response.
 function handleClientMessage(clientId, rawMessage) {
   let message;
 
@@ -301,6 +305,9 @@ function handleClientMessage(clientId, rawMessage) {
   }
 }
 
+// Create a brand-new room for a player who clicked Host LAN.
+//
+// Important: this does not reuse or overwrite someone else's room.
 function createHostedRoom(clientId, message) {
   leaveCurrentRoom(clientId);
 
@@ -323,6 +330,9 @@ function createHostedRoom(clientId, message) {
   broadcastRooms();
 }
 
+// Build the server-side object for one LAN room.
+//
+// The room stores lobby state, player slots, game phase, and cleanup timers.
 function createRoom() {
   return {
     id: createRoomCode(),
@@ -348,6 +358,9 @@ function createRoom() {
   };
 }
 
+// Clear all rooms.
+//
+// This is only used by browser tests through the local-only test endpoint.
 function resetRooms() {
   for (const room of rooms.values()) {
     stopServerGameLoop(room);
@@ -362,6 +375,9 @@ function resetRooms() {
   broadcastRooms();
 }
 
+// Change the number of player/AI slots before the game starts.
+//
+// Existing joined players are kept in their same slot when possible.
 function configureRoom(room, message) {
   const playerSlots = clampInteger(message.playerSlots, 2, 6, room.playerSlots);
   const aiSlots = clampInteger(message.aiSlots, 0, 4, room.aiSlots);
@@ -383,6 +399,10 @@ function configureRoom(room, message) {
   }
 }
 
+// Create the slot rows for a room.
+//
+// Human slots wait for browsers to join. AI slots are marked ready, but only
+// the first two human slots are playable right now.
 function createSlots(playerSlots, aiSlots) {
   const slots = [];
 
@@ -422,6 +442,9 @@ function createSlots(playerSlots, aiSlots) {
   return slots;
 }
 
+// Put one browser into one open human slot.
+//
+// This is used by both room creation and Join buttons.
 function assignPlayerToSlot(room, clientId, slotIndex, playerDetails = {}) {
   if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= room.slots.length) {
     return;
@@ -458,6 +481,10 @@ function assignPlayerToSlot(room, clientId, slotIndex, playerDetails = {}) {
   touchRoom(room);
 }
 
+// Voluntarily leave the current room.
+//
+// This frees the slot. It is different from a disconnect, which may reserve a
+// slot during an active game so the player can refresh and return.
 function leaveCurrentRoom(clientId) {
   const client = clients.get(clientId);
   const room = client?.roomId ? rooms.get(client.roomId) : null;
@@ -494,6 +521,10 @@ function leaveCurrentRoom(clientId) {
   broadcastRoom(room);
 }
 
+// Handle a browser tab closing or losing its WebSocket.
+//
+// In a lobby, disconnecting behaves like leaving. In an active game, the slot
+// is reserved and the room pauses until the player reconnects.
 function disconnectClientFromCurrentRoom(clientId) {
   const client = clients.get(clientId);
   const room = client?.roomId ? rooms.get(client.roomId) : null;
@@ -530,6 +561,10 @@ function disconnectClientFromCurrentRoom(clientId) {
   broadcastRoom(room);
 }
 
+// Reconnect a refreshed browser to its old slot.
+//
+// The browser sends a local playerToken. If a disconnected slot remembers that
+// token, the server gives the slot back to the new WebSocket connection.
 function reconnectClientToSlot(clientId) {
   const client = clients.get(clientId);
 
@@ -562,6 +597,9 @@ function reconnectClientToSlot(clientId) {
   return null;
 }
 
+// Close a room and detach all connected clients from it.
+//
+// This also stops any server game loop for the room.
 function closeRoom(roomId) {
   const room = rooms.get(roomId);
 
@@ -589,25 +627,36 @@ function closeRoom(roomId) {
   rooms.delete(roomId);
 }
 
+// Find the room a command is trying to use.
+//
+// Some commands include roomId directly. Others use the room the client is
+// already in as a fallback.
 function findTargetRoom(roomId, fallbackRoomId) {
   const requestedRoomId = sanitizeRoomId(roomId) || sanitizeRoomId(fallbackRoomId);
   return requestedRoomId ? rooms.get(requestedRoomId) : firstJoinableRoom();
 }
 
+// Return the room this client currently belongs to.
 function currentRoomForClient(clientId) {
   const client = clients.get(clientId);
   return client?.roomId ? rooms.get(client.roomId) || null : null;
 }
 
+// Find the first lobby room with an open playable slot.
 function firstJoinableRoom() {
   return [...rooms.values()].find((room) => room.phase === 'lobby' && room.slots.some((slot) => !slot.isAi && slot.index < playableHumanSlots && !slot.clientId)) || null;
 }
 
+// Pick the first slot that can take a turn.
 function firstOccupiedSlotIndex(room) {
   const first = room.slots.find((slot) => slot.isAi || slot.clientId);
   return first?.index ?? 0;
 }
 
+// Start the server-owned game loop for one room.
+//
+// The host browser sends the first snapshot. After that, this loop applies
+// commands and broadcasts snapshots to everyone in the room.
 function startServerGameLoop(room, initialSnapshot) {
   stopServerGameLoop(room);
   clearStartTimeout(room);
@@ -647,6 +696,7 @@ function startServerGameLoop(room, initialSnapshot) {
   }, 33);
 }
 
+// Stop the interval that ticks a room's server game.
 function stopServerGameLoop(room) {
   if (room.engineTimer) {
     clearInterval(room.engineTimer);
@@ -656,6 +706,8 @@ function stopServerGameLoop(room) {
   room.engine = null;
 }
 
+// If a room paused only because somebody disconnected, resume once everyone is
+// connected again.
 function maybeResumeAfterReconnect(room) {
   if (room.pauseReason !== 'disconnect') {
     return;
@@ -669,6 +721,7 @@ function maybeResumeAfterReconnect(room) {
   }
 }
 
+// True when all currently playable human slots are filled and guests are ready.
 function canStartRoom(room) {
   const joinedPlayers = playableSlots(room).filter((slot) => slot.clientId && !slot.disconnected);
   const readyGuests = joinedPlayers.filter((slot) => slot.clientId !== room.hostId);
@@ -676,6 +729,7 @@ function canStartRoom(room) {
   return joinedPlayers.length === playableHumanSlots && readyGuests.every((slot) => slot.ready);
 }
 
+// Explain why the host cannot start the room yet.
 function startBlockReason(room) {
   const joinedPlayers = playableSlots(room).filter((slot) => slot.clientId && !slot.disconnected);
 
@@ -692,21 +746,28 @@ function startBlockReason(room) {
   return 'The LAN room is not ready yet.';
 }
 
+// Find the display name of the room host.
 function hostName(room) {
   const hostSlot = room.slots.find((slot) => slot.clientId === room.hostId);
   return hostSlot?.name || 'Another player';
 }
 
+// Return only the human slots that are active in today's game.
 function playableSlots(room) {
   return room.slots.filter((slot) => !slot.isAi && slot.index < playableHumanSlots);
 }
 
+// Build the room list that is safe to send to browsers.
 function publicRooms() {
   return [...rooms.values()]
     .sort((a, b) => a.createdAt - b.createdAt)
     .map(publicRoom);
 }
 
+// Remove server-only objects before sending a room to browsers.
+//
+// WebSocket messages must be JSON-friendly, so timers and engine objects stay
+// on the server.
 function publicRoom(room) {
   return {
     ...room,
@@ -720,20 +781,24 @@ function publicRoom(room) {
   };
 }
 
+// Send one room's full state to players already inside that room.
 function broadcastRoom(room) {
   broadcastToRoom(room, 'roomState', { room: publicRoom(room) });
 }
 
+// Send the room list to every connected browser.
 function broadcastRooms() {
   broadcast('roomList', { rooms: publicRooms() });
 }
 
+// Send one message to every connected browser.
 function broadcast(type, payload) {
   for (const { socket } of clients.values()) {
     send(socket, type, payload);
   }
 }
 
+// Send one message to every browser inside a specific room.
 function broadcastToRoom(room, type, payload) {
   for (const client of clients.values()) {
     if (client.roomId === room.id) {
@@ -742,6 +807,7 @@ function broadcastToRoom(room, type, payload) {
   }
 }
 
+// Send one message to everyone in a room except one browser.
 function broadcastToRoomExcept(room, excludedClientId, type, payload) {
   for (const client of clients.values()) {
     if (client.id !== excludedClientId && client.roomId === room.id) {
@@ -750,12 +816,14 @@ function broadcastToRoomExcept(room, excludedClientId, type, payload) {
   }
 }
 
+// Send JSON through one WebSocket if it is open.
 function send(socket, type, payload) {
   if (socket.readyState === 1) {
     socket.send(JSON.stringify({ type, ...payload }));
   }
 }
 
+// Make a short room code like "K7Q2".
 function createRoomCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -774,6 +842,10 @@ function createRoomCode() {
   return randomUUID().slice(0, 8).toUpperCase();
 }
 
+// Start a timer while waiting for the host's initial snapshot.
+//
+// If the snapshot never arrives, the room returns to lobby instead of getting
+// stuck in "starting" forever.
 function beginStartHandshake(room) {
   clearStartTimeout(room);
   room.startTimeout = setTimeout(() => {
@@ -792,6 +864,7 @@ function beginStartHandshake(room) {
   }, START_HANDSHAKE_TIMEOUT_MS);
 }
 
+// Cancel a room's start-handshake timer.
 function clearStartTimeout(room) {
   if (room.startTimeout) {
     clearTimeout(room.startTimeout);
@@ -799,6 +872,10 @@ function clearStartTimeout(room) {
   }
 }
 
+// Basic command-rate protection.
+//
+// Holding a key should be fine. A broken or malicious client should not be
+// allowed to flood a room with thousands of commands per second.
 function acceptGameCommand(client, command) {
   if (command?.type === 'keyUp') {
     return true;
@@ -815,6 +892,7 @@ function acceptGameCommand(client, command) {
   return true;
 }
 
+// Periodically remove rooms that nobody is using anymore.
 function cleanupRooms() {
   const now = Date.now();
   let changed = false;
@@ -840,33 +918,43 @@ function cleanupRooms() {
   }
 }
 
+// Mark a room as recently active.
 function touchRoom(room) {
   room.lastActiveAt = Date.now();
 }
 
+// Keep player names short and non-empty.
 function sanitizeName(name) {
   return String(name).trim().slice(0, 24) || 'Player';
 }
 
+// Accept only normal HTML hex colors like #d45745.
 function sanitizeColor(color) {
   return /^#[0-9a-f]{6}$/i.test(String(color)) ? color : '#d45745';
 }
 
+// Keep model/item ids simple so they are safe to store and compare.
 function sanitizeId(id) {
   const text = String(id || '').trim();
   return /^[a-zA-Z0-9_-]{1,80}$/.test(text) ? text : 'p1Custom';
 }
 
+// Keep room ids in a simple uppercase-code format.
 function sanitizeRoomId(id) {
   const text = String(id || '').trim().toUpperCase();
   return /^[A-Z0-9_-]{1,24}$/.test(text) ? text : '';
 }
 
+// Validate the browser's reconnect token.
+//
+// This is not authentication. It only helps a refreshed browser reclaim its
+// previous LAN slot.
 function sanitizePlayerToken(token) {
   const text = String(token || '').trim();
   return /^[a-zA-Z0-9_-]{16,80}$/.test(text) ? text : '';
 }
 
+// Accept the host's tank/ammo designer library in a predictable shape.
 function sanitizeLibrary(library) {
   if (!library || typeof library !== 'object') {
     return null;
@@ -880,6 +968,7 @@ function sanitizeLibrary(library) {
   };
 }
 
+// Default match settings for a new room.
 function defaultSettings() {
   return {
     matchRounds: 3,
@@ -890,6 +979,7 @@ function defaultSettings() {
   };
 }
 
+// Accept match settings from the browser and clamp unsafe values.
 function sanitizeSettings(settings) {
   if (!settings || typeof settings !== 'object') {
     return defaultSettings();
@@ -907,6 +997,7 @@ function sanitizeSettings(settings) {
   };
 }
 
+// Convert a value to an integer inside a range.
 function clampInteger(value, min, max, fallback) {
   const number = Math.round(Number(value));
 
@@ -917,6 +1008,7 @@ function clampInteger(value, min, max, fallback) {
   return Math.max(min, Math.min(max, number));
 }
 
+// Find this computer's LAN IPv4 addresses.
 function localAddresses() {
   return Object.values(networkInterfaces())
     .flat()
@@ -924,6 +1016,7 @@ function localAddresses() {
     .map((address) => address.address);
 }
 
+// Only allow certain test/debug endpoints from this same computer.
 function isLocalRequest(request) {
   const address = request.socket.remoteAddress || '';
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';

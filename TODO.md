@@ -39,6 +39,16 @@ Draw one tank on graph paper.
 
 Then put the dot coordinates into the game so your tank appears in **Game Setup**.
 
+Important habit:
+
+- Do **not** erase the starter tanks yet.
+- Copy a working tank.
+- Paste your copy.
+- Rename the copy.
+- Change only your new copy.
+
+That way you always have a working example nearby.
+
 ### The Coordinate Rules
 
 Use the bottom-middle of your tank as:
@@ -126,7 +136,7 @@ Find this:
 export const TANK_MODELS = {
 ```
 
-Copy one of the existing tanks.
+Copy one whole existing tank.
 
 Paste your copy under `p2Custom`.
 
@@ -136,7 +146,7 @@ Rename it something simple, like:
 danielTank
 ```
 
-Starter shape:
+Your new model should look like this:
 
 ```js
 danielTank: {
@@ -170,13 +180,30 @@ danielTank: {
 
 ### Important Comma Rule
 
-If another tank comes after your tank, put a comma after your tank:
+Every model inside `TANK_MODELS` is separated by a comma.
+
+If your tank is between `p2Custom` and `hillTurret`, it needs:
+
+- a comma after `p2Custom`
+- a comma after your new tank
+
+Example:
 
 ```js
+p2Custom: {
+  // old starter tank
 },
+
+danielTank: {
+  // your new tank
+},
+
+hillTurret: {
+  // old starter turret
+}
 ```
 
-If your tank is the very last one, no comma is needed.
+The last model does not need a comma after it.
 
 ## Step 5: Test Your Tank
 
@@ -213,9 +240,17 @@ Try this:
 
 A turret is like a tank that cannot drive.
 
-Copy `hillTurret` in [src/game/tankModels.js](src/game/tankModels.js).
+Copy the whole `hillTurret` model in [src/game/tankModels.js](src/game/tankModels.js).
 
-Make your own turret with a new name.
+Paste the copy under `hillTurret`.
+
+Make your copied turret with a new name, like:
+
+```js
+danielTurret
+```
+
+Then change the points in your new copy.
 
 Turret settings:
 

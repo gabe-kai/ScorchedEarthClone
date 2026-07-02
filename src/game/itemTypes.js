@@ -90,6 +90,16 @@ export const STARTING_INVENTORY = {
   selectedSlot: 0
 };
 
+// Build a fresh inventory for one player.
+//
+// Important:
+// Each player gets their own copy. If Player 1 fires a Heavy Shell, Player 2's
+// Heavy Shell count should not change.
+//
+// Designer note:
+// itemTypes can include new ammo from the Ammo Designer, so this function
+// builds the inventory from the current item library instead of hardcoding only
+// the starter items.
 export function createStartingInventory(itemTypes = ITEM_TYPES) {
   const itemEntries = Object.entries(itemTypes);
   const knownQuickbarItems = STARTING_INVENTORY.quickbar.filter((itemId) => itemTypes[itemId]);
@@ -109,6 +119,10 @@ export function createStartingInventory(itemTypes = ITEM_TYPES) {
   };
 }
 
+// Make a short tooltip-style description for one inventory item.
+//
+// The quickbar and inventory UI use this so players can hover over an item and
+// understand what it does.
 export function describeItem(itemId, itemTypes = ITEM_TYPES) {
   const item = itemTypes[itemId];
 

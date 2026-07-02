@@ -169,11 +169,16 @@ if (window.tanksUiCleanup) {
 
 const uiCleanupHandlers = [];
 
+// Attach one UI event listener and remember how to remove it later.
+//
+// This helps long dev sessions because old listeners can be cleaned up if the
+// script is ever re-run.
 function addUiListener(target, eventName, handler) {
   target.addEventListener(eventName, handler);
   uiCleanupHandlers.push(() => target.removeEventListener(eventName, handler));
 }
 
+// Open the inventory modal and refresh its contents first.
 function openInventory() {
   renderInventory();
 
@@ -182,11 +187,16 @@ function openInventory() {
   }
 }
 
+// Start a local hot-seat game using the setup form.
 function startNewGame() {
   updatePlayerSetupFromFields();
   startConfiguredGame(playerSetup);
 }
 
+// Start a match with a finished player setup.
+//
+// This is used by local play and by the LAN client after the server starts a
+// network game.
 function startConfiguredGame(setup) {
   playerSetup = resolvePlayerSetupTankIds(setup);
   game.startMatch(playerSetup, Number(matchRoundsInput.value || 1), landscapeInput.value, {
@@ -199,6 +209,7 @@ function startConfiguredGame(setup) {
   showGameView();
 }
 
+// Move from a finished round into the next round of the same match.
 function startNextRound() {
   game.reset();
   game.notifyInventoryChanged();
@@ -208,6 +219,9 @@ function startNextRound() {
   showGameView();
 }
 
+// Copy the current game settings back into the setup screen.
+//
+// This is useful when the player opens Game Setup from an active match.
 function renderGameSetup() {
   renderPlayerSetup();
   landscapeInput.value = game.landscapeMode;
@@ -218,6 +232,10 @@ function renderGameSetup() {
   nextRoundButton.hidden = !canContinueMatch;
 }
 
+// Hide setup and show the battlefield.
+//
+// Blurring the active element prevents Space from clicking a hidden setup
+// button instead of firing the tank.
 function showGameView() {
   // After clicking a setup button, focus can stay on that button even though
   // the battlefield is now visible. Blur it so Space/arrows go to the game.
@@ -226,12 +244,17 @@ function showGameView() {
   gameView.classList.remove('is-hidden');
 }
 
+// Hide the battlefield and show Game Setup.
 function showSetupView() {
   renderGameSetup();
   setupView.classList.remove('is-hidden');
   gameView.classList.add('is-hidden');
 }
 
+// Switch between Local Game, Host LAN, and Join LAN setup panels.
+//
+// Each mode shows a different set of controls, but the match settings stay in
+// the same place.
 function selectSetupMode(mode) {
   setupMode = mode;
   setupModeTabs.forEach((tab) => {
@@ -267,6 +290,9 @@ function selectSetupMode(mode) {
   }
 }
 
+// Rising Sea needs water and a nonzero rise amount to be interesting.
+//
+// This helper gently fills in those defaults when that landscape is selected.
 function syncWaterDefaultsForLandscape() {
   if (landscapeInput.value !== 'risingSea') {
     multiplayerClient?.publishSettings();
@@ -282,6 +308,7 @@ function syncWaterDefaultsForLandscape() {
   multiplayerClient?.publishSettings();
 }
 
+// Read match settings from the setup form.
 function currentMatchSettings() {
   return {
     matchRounds: Number(matchRoundsInput.value || 1),
@@ -292,6 +319,10 @@ function currentMatchSettings() {
   };
 }
 
+// Apply host match settings on a joining browser.
+//
+// Joining players should see the same rounds, landscape, and water settings as
+// the host.
 function applyNetworkMatchSettings(settings) {
   if (!settings) {
     return;
@@ -304,11 +335,15 @@ function applyNetworkMatchSettings(settings) {
   waterRiseInput.value = String(settings.waterRisePerShot ?? 0);
 }
 
+// Open a dialog centered over the canvas or setup shell.
 function openCanvasCenteredModal(modal) {
   centerModalOnCanvas(modal);
   modal.showModal();
 }
 
+// Position a modal over the game canvas.
+//
+// During setup the canvas is hidden, so the setup shell becomes the anchor.
 function centerModalOnCanvas(modal) {
   // During play, center modals over the canvas. During setup, the canvas is
   // hidden, so center over the setup shell instead.
@@ -320,15 +355,23 @@ function centerModalOnCanvas(modal) {
   modal.style.setProperty('--modal-top', `${anchorRect.top + anchorRect.height / 2}px`);
 }
 
+// Recenter any open dialogs after scrolling or resizing.
 function centerOpenModalsOnCanvas() {
   document.querySelectorAll('dialog[open]').forEach(centerModalOnCanvas);
 }
 
+// Convert a quickbar slot index into the key shown on the button.
+//
+// Slot 9 displays as 0, like many game hotbars.
 function hotkeyForSlot(index) {
   const number = index + 1;
   return number === 10 ? '0' : String(number);
 }
 
+// Draw the bottom quickbar.
+//
+// The quickbar shows inventory, selected ammo/tools, and the number keys used
+// to choose each slot.
 function renderQuickbar() {
   // The quickbar is small, so rebuilding it when inventory changes is simple.
   // This does NOT run every animation frame; it only runs when selection or
@@ -378,6 +421,10 @@ function renderQuickbar() {
   }
 }
 
+// Draw the inventory modal.
+//
+// The inventory lets players purchase/sell items and assign hovered items to
+// quickbar slots with number keys.
 function renderInventory() {
   // The inventory modal is ordinary HTML.
   // Each row shows quantity plus purchase/sell buttons.
@@ -427,6 +474,9 @@ function renderInventory() {
   }
 }
 
+// Load saved local player setup from localStorage.
+//
+// If nothing has been saved yet, return null and let defaults take over.
 function loadPlayerSetup() {
   try {
     const savedText = localStorage.getItem(PLAYER_SETUP_STORAGE_KEY);
@@ -436,6 +486,7 @@ function loadPlayerSetup() {
   }
 }
 
+// Save local player names, colors, and tank choices.
 function savePlayerSetup() {
   try {
     localStorage.setItem(PLAYER_SETUP_STORAGE_KEY, JSON.stringify(playerSetup));
@@ -444,6 +495,9 @@ function savePlayerSetup() {
   }
 }
 
+// Turn possibly-missing saved setup into two complete player objects.
+//
+// This keeps older saved data from breaking after we add new fields.
 function normalizePlayerSetup(savedSetup) {
   const setup = Array.isArray(savedSetup) ? savedSetup : [];
 
@@ -461,6 +515,9 @@ function normalizePlayerSetup(savedSetup) {
   ];
 }
 
+// Make sure every selected tank id still exists.
+//
+// If a model was deleted or renamed, fall back to a valid tank.
 function resolvePlayerSetupTankIds(setup) {
   const availableIds = new Set(tankDesignerItems.map((model) => model.id));
   const fallbackIds = tankDesignerItems.map((model) => model.id);
@@ -472,6 +529,7 @@ function resolvePlayerSetupTankIds(setup) {
   }));
 }
 
+// Fill the setup form with current player names, colors, and tank options.
 function renderPlayerSetup() {
   playerSetup = resolvePlayerSetupTankIds(playerSetup);
 
@@ -485,6 +543,7 @@ function renderPlayerSetup() {
   renderTankSelect(multiplayerElements.tankInput, multiplayerElements.tankInput.value || playerSetup[0].modelId);
 }
 
+// Rebuild one tank dropdown from the current tank library.
 function renderTankSelect(select, selectedModelId) {
   select.textContent = '';
 
@@ -497,6 +556,7 @@ function renderTankSelect(select, selectedModelId) {
   }
 }
 
+// Read the local player setup form back into playerSetup.
 function updatePlayerSetupFromFields() {
   playerSetup = resolvePlayerSetupTankIds([
     {
@@ -514,6 +574,9 @@ function updatePlayerSetupFromFields() {
   savePlayerSetup();
 }
 
+// Convert Tank Designer data into ScorchedGame tank models.
+//
+// This is the bridge between designer UI data and actual gameplay data.
 function applyTankLibraryToGame(forcePlayerSetup = false, options = {}) {
   const { publish = true } = options;
   game.setTankModels(buildGameTankModels());
@@ -538,6 +601,7 @@ function applyTankLibraryToGame(forcePlayerSetup = false, options = {}) {
   }
 }
 
+// Convert Ammo Designer data into ScorchedGame item/ammo data.
 function applyItemLibraryToGame(options = {}) {
   const { publish = true } = options;
   game.setItemTypes(buildGameItemTypes());
@@ -548,6 +612,7 @@ function applyItemLibraryToGame(options = {}) {
   }
 }
 
+// Bundle the current tank and ammo designer data for LAN sharing.
 function currentDesignerLibrary() {
   return {
     tankDesignerItems,
@@ -557,6 +622,9 @@ function currentDesignerLibrary() {
   };
 }
 
+// Apply the host's designer library on a joining browser.
+//
+// This is why LAN joiners can choose custom host tanks and ammo.
 function applyNetworkDesignerLibrary(library) {
   if (!library) {
     return;
@@ -586,10 +654,17 @@ function applyNetworkDesignerLibrary(library) {
   renderAmmoDesigner();
 }
 
+// Build the object shape ScorchedGame expects for tank models.
+//
+// Designer items are stored as an array for the UI, but the game wants an
+// object keyed by model id.
 function buildGameTankModels() {
   return Object.fromEntries(tankDesignerItems.map((model) => [model.id, designerTankToGameModel(model)]));
 }
 
+// Build the object shape ScorchedGame expects for item/ammo types.
+//
+// Non-ammo starter tools are kept, while ammo comes from the Ammo Designer.
 function buildGameItemTypes() {
   const nonAmmoItems = Object.fromEntries(
     Object.entries(ITEM_TYPES).filter(([, item]) => item.kind !== 'ammo')
@@ -604,6 +679,12 @@ function buildGameItemTypes() {
   };
 }
 
+// Convert one Ammo Designer row into one real gameplay item.
+//
+// Daniel task:
+// The designer has explosionSize and divotSize sliders. Two lines below are
+// intentionally left simple so Daniel can wire those sliders into real crater
+// behavior.
 function designerAmmoToGameItem(ammo) {
   const startingCount = ammo.inventoryCount === 'Infinity'
     ? Infinity
@@ -635,6 +716,9 @@ function designerAmmoToGameItem(ammo) {
   };
 }
 
+// Convert one Tank Designer row into one real gameplay tank model.
+//
+// The UI says bodyColor/cabColor, while the game uses color/accent.
 function designerTankToGameModel(model) {
   return {
     name: model.name || 'Unnamed Model',
@@ -650,6 +734,10 @@ function designerTankToGameModel(model) {
   };
 }
 
+// Estimate a simple rectangle hit box from polygon points.
+//
+// A real polygon hit test would be harder. This gives us a useful first
+// collision box that Daniel can tune later.
 function collisionFromPoints(points) {
   if (!points.length) {
     return { width: 32, height: 24 };
@@ -662,6 +750,7 @@ function collisionFromPoints(points) {
   return { width, height };
 }
 
+// Load saved Tank/Ammo Designer data from localStorage.
 function loadDesignerState() {
   // localStorage is browser storage.
   // It survives refreshes and dev-server restarts, but it stays on this
@@ -674,6 +763,7 @@ function loadDesignerState() {
   }
 }
 
+// Save Tank/Ammo Designer data to localStorage.
 function saveDesignerState() {
   try {
     localStorage.setItem(DESIGNER_STORAGE_KEY, JSON.stringify({
@@ -687,6 +777,9 @@ function saveDesignerState() {
   }
 }
 
+// Create the Tank Designer list.
+//
+// Saved models win. If there is no save yet, start from tankModels.js.
 function createTankDesignerItems(savedState) {
   if (Array.isArray(savedState?.tankDesignerItems) && savedState.tankDesignerItems.length > 0) {
     return savedState.tankDesignerItems.map(normalizeTankDesignerItem);
@@ -713,6 +806,7 @@ function createTankDesignerItems(savedState) {
   }));
 }
 
+// Make sure one tank designer item has every field the UI expects.
 function normalizeTankDesignerItem(model, index) {
   const kind = model.kind === 'turret' ? 'turret' : 'tank';
 
@@ -738,15 +832,18 @@ function normalizeTankDesignerItem(model, index) {
   };
 }
 
+// Return the currently selected tank designer item.
 function selectedTankDesignerItem() {
   return tankDesignerItems.find((item) => item.id === selectedTankDesignerId) || tankDesignerItems[0];
 }
 
+// Redraw the whole Tank Designer tab.
 function renderTankDesigner() {
   renderTankDesignerList();
   renderTankDesignerDetails();
 }
 
+// Draw the left-side list of tank/turret models.
 function renderTankDesignerList() {
   tankDesignerList.textContent = '';
 
@@ -777,6 +874,7 @@ function renderTankDesignerList() {
   }
 }
 
+// Fill the right-side Tank Designer fields for the selected model.
 function renderTankDesignerDetails() {
   const model = selectedTankDesignerItem();
 
@@ -799,6 +897,9 @@ function renderTankDesignerDetails() {
   drawTankDesignerPreview(model);
 }
 
+// Copy field values back into the selected tank designer item.
+//
+// This runs whenever a tank designer input changes.
 function updateSelectedTankFromFields() {
   const model = selectedTankDesignerItem();
 
@@ -835,6 +936,7 @@ function updateSelectedTankFromFields() {
   applyTankLibraryToGame();
 }
 
+// Add a new blank-ish tank or turret to the Tank Designer list.
 function addNewTankDesignerItem(kind) {
   const isTurret = kind === 'turret';
   const number = tankDesignerItems.length + 1;
@@ -867,6 +969,10 @@ function addNewTankDesignerItem(kind) {
   renderTankDesigner();
 }
 
+// Draw the Tank Designer preview canvas.
+//
+// The preview shows the body, cab, cannon pivot, cannon angle, and allowed arc
+// so graph-paper points are easier to understand.
 function drawTankDesignerPreview(model) {
   const ctx = tankPreview.canvas.getContext('2d');
   const width = tankPreview.canvas.width;
@@ -920,6 +1026,7 @@ function drawTankDesignerPreview(model) {
   tankPreview.stats.textContent = `${model.kind === 'turret' ? 'Turret' : 'Tank'} | ${model.canMove ? 'moves' : 'fixed'} | cannon ${minAngle}-${maxAngle} deg`;
 }
 
+// Draw one scaled polygon in the Tank Designer preview.
 function drawPreviewPolygon(ctx, origin, scale, points, fillStyle) {
   if (points.length === 0) {
     return;
@@ -937,6 +1044,10 @@ function drawPreviewPolygon(ctx, origin, scale, points, fillStyle) {
   ctx.fill();
 }
 
+// Draw the circular angle guide behind the preview cannon.
+//
+// The warm arc shows allowed cannon angles. The darker arc shows angles that
+// are outside the model's limits.
 function drawPreviewProtractor(ctx, pivot, radius, minAngle, maxAngle) {
   // The preview protractor is centered on the real cannon pivot.
   // Muted red is blocked. Accent yellow is the allowed cannon range.
@@ -970,6 +1081,10 @@ function drawPreviewProtractor(ctx, pivot, radius, minAngle, maxAngle) {
   }
 }
 
+// Convert game degrees into canvas radians.
+//
+// Canvas uses radians and y points down, so this conversion is easy to get
+// backwards.
 function canvasRadians(angleDegrees) {
   // Game angles use 0 degrees to the right and 90 degrees upward.
   // Canvas y grows downward, so positive game angles become negative canvas
@@ -977,14 +1092,17 @@ function canvasRadians(angleDegrees) {
   return (-angleDegrees * Math.PI) / 180;
 }
 
+// Find how close a point is to the nearest edge of a preview canvas.
 function distanceToCanvasEdge(point, width, height) {
   return Math.min(point.x, width - point.x, point.y, height - point.y);
 }
 
+// Copy point objects so editing one model does not mutate another model.
 function clonePoints(points) {
   return points.map((point) => ({ x: point.x, y: point.y }));
 }
 
+// Make sure a point list is safe to draw and save.
 function normalizePoints(points) {
   if (!Array.isArray(points)) {
     return [];
@@ -995,12 +1113,16 @@ function normalizePoints(points) {
     .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
 }
 
+// Turn point data into pretty JSON for the textarea.
 function formatPoints(points) {
   // This format matches tankModels.js closely enough that it can be copied
   // into the source file when a design is ready.
   return `[\n${points.map((point) => `  { "x": ${point.x}, "y": ${point.y} }`).join(',\n')}\n]`;
 }
 
+// Parse the body/cab point textarea.
+//
+// If the JSON is invalid, keep the previous points instead of crashing.
 function parsePointList(text, fallbackPoints) {
   try {
     const points = JSON.parse(text);
@@ -1024,10 +1146,14 @@ function parsePointList(text, fallbackPoints) {
   }
 }
 
+// Clamp a number for designer fields.
 function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+// Create the Ammo Designer list.
+//
+// Saved ammo wins. If there is no save yet, start from itemTypes.js.
 function createAmmoDesignerItems(savedState) {
   if (Array.isArray(savedState?.ammoDesignerItems) && savedState.ammoDesignerItems.length > 0) {
     return savedState.ammoDesignerItems.map(normalizeAmmoDesignerItem);
@@ -1052,6 +1178,7 @@ function createAmmoDesignerItems(savedState) {
     }));
 }
 
+// Make sure one ammo designer item has every field the UI expects.
 function normalizeAmmoDesignerItem(ammo, index) {
   return {
     id: ammo.id || `savedAmmo${index}`,
@@ -1068,15 +1195,18 @@ function normalizeAmmoDesignerItem(ammo, index) {
   };
 }
 
+// Return the currently selected ammo designer item.
 function selectedAmmoDesignerItem() {
   return ammoDesignerItems.find((item) => item.id === selectedAmmoDesignerId) || ammoDesignerItems[0];
 }
 
+// Redraw the whole Ammo Designer tab.
 function renderAmmoDesigner() {
   renderAmmoDesignerList();
   renderAmmoDesignerDetails();
 }
 
+// Draw the left-side list of ammunition types.
 function renderAmmoDesignerList() {
   ammoDesignerList.textContent = '';
 
@@ -1107,6 +1237,7 @@ function renderAmmoDesignerList() {
   }
 }
 
+// Fill the Ammo Designer fields for the selected ammo.
 function renderAmmoDesignerDetails() {
   const ammo = selectedAmmoDesignerItem();
 
@@ -1128,6 +1259,7 @@ function renderAmmoDesignerDetails() {
   updateAmmoPreview(ammo);
 }
 
+// Copy field values back into the selected ammo designer item.
 function updateSelectedAmmoFromFields() {
   const ammo = selectedAmmoDesignerItem();
 
@@ -1152,6 +1284,10 @@ function updateSelectedAmmoFromFields() {
   applyItemLibraryToGame();
 }
 
+// Draw the small visual ammo preview in the designer.
+//
+// This preview already follows explosionSize and divotSize, even though the
+// real gameplay mapping is intentionally left for Daniel.
 function updateAmmoPreview(ammo) {
   const explosionPreviewSize = Math.round(ammo.explosionSize * 0.72);
   const missPreviewSize = Math.max(16, explosionPreviewSize - 10);
@@ -1170,6 +1306,7 @@ function updateAmmoPreview(ammo) {
   ammoPreview.divot.style.width = `${divotPreviewWidth}px`;
 }
 
+// Add a new ammunition type to the Ammo Designer list.
 function addNewAmmoDesignerItem() {
   const number = ammoDesignerItems.length + 1;
   const newAmmo = {
@@ -1193,14 +1330,17 @@ function addNewAmmoDesignerItem() {
   renderAmmoDesigner();
 }
 
+// Convert an inventory count into display text.
 function inventoryLabel(count) {
   return count === 'Infinity' ? 'infinite shots' : `${count} shots`;
 }
 
+// Guess a starter price from ammo stats.
 function suggestedAmmoPrice(item) {
   return Math.round((item.damage || 0) + (item.blastRadius || 0) / 2 + (item.terrainDamage || 0) * 8);
 }
 
+// Switch between Ammunition, Tanks & Turrets, and Items tabs.
 function selectDesignerTab(tabName) {
   designerTabs.forEach((tab) => {
     tab.classList.toggle('is-selected', tab.dataset.designerTab === tabName);
@@ -1217,6 +1357,7 @@ function selectDesignerTab(tabName) {
   }
 }
 
+// Connect ScorchedGame inventory changes back to the HTML UI.
 game.setInventoryChangeHandler(() => {
   // ScorchedGame calls this after ammo is selected, used, added, or removed.
   // Keeping the render call here prevents duplicate quickbar redraws.
@@ -1227,12 +1368,17 @@ game.setInventoryChangeHandler(() => {
   }
 });
 
+// Boot the page with saved designer data before the player starts clicking.
 applyTankLibraryToGame(true);
 applyItemLibraryToGame();
 renderQuickbar();
 renderTankDesigner();
 renderAmmoDesigner();
 
+// Create the multiplayer helper.
+//
+// The helper receives callbacks instead of importing UI data directly. That
+// keeps network code separate from designer/setup code.
 multiplayerClient = new MultiplayerClient({
   game,
   elements: multiplayerElements,
@@ -1254,40 +1400,56 @@ multiplayerClient = new MultiplayerClient({
   }
 });
 
+// MAIN SETUP BUTTONS
+//
+// These turn clicks in the setup screen into game actions.
 addUiListener(startNewGameButton, 'click', startNewGame);
 addUiListener(nextRoundButton, 'click', startNextRound);
 addUiListener(showSetupButton, 'click', showSetupView);
+
+// MATCH SETTING CHANGES
+//
+// In LAN play, the host's setup choices are shared with joined players.
 addUiListener(landscapeInput, 'change', syncWaterDefaultsForLandscape);
 addUiListener(matchRoundsInput, 'change', () => multiplayerClient?.publishSettings());
 addUiListener(waterEnabledInput, 'change', () => multiplayerClient?.publishSettings());
 addUiListener(waterLevelInput, 'change', () => multiplayerClient?.publishSettings());
 addUiListener(waterRiseInput, 'change', () => multiplayerClient?.publishSettings());
+
+// DESIGNER CREATE BUTTONS
+//
+// These add a new editable item to the current designer tab.
 addUiListener(newTankButton, 'click', () => addNewTankDesignerItem('tank'));
 addUiListener(newTurretButton, 'click', () => addNewTankDesignerItem('turret'));
 addUiListener(newAmmoButton, 'click', addNewAmmoDesignerItem);
 
+// Tank designer fields update the selected tank as Daniel edits.
 Object.values(tankFields).forEach((field) => {
   addUiListener(field, 'input', updateSelectedTankFromFields);
   addUiListener(field, 'change', updateSelectedTankFromFields);
 });
 
+// Ammo designer fields update the selected ammo as Daniel edits.
 Object.values(ammoFields).forEach((field) => {
   addUiListener(field, 'input', updateSelectedAmmoFromFields);
   addUiListener(field, 'change', updateSelectedAmmoFromFields);
 });
 
+// Designer tabs switch between the three designer panels.
 designerTabs.forEach((tab) => {
   addUiListener(tab, 'click', () => {
     selectDesignerTab(tab.dataset.designerTab);
   });
 });
 
+// Setup tabs switch between local play, hosting, and joining LAN games.
 setupModeTabs.forEach((tab) => {
   addUiListener(tab, 'click', () => {
     selectSetupMode(tab.dataset.setupMode);
   });
 });
 
+// Copy the host address so another computer can paste it into the browser.
 addUiListener(multiplayerElements.copyHostAddressButton, 'click', async () => {
   const text = multiplayerElements.hostAddress.textContent.trim();
 
@@ -1328,9 +1490,11 @@ addUiListener(window, 'keydown', (event) => {
   game.selectQuickbarSlot(slotIndex);
 });
 
+// Keep canvas-centered modals centered if the browser window changes.
 addUiListener(window, 'resize', centerOpenModalsOnCanvas);
 addUiListener(window, 'scroll', centerOpenModalsOnCanvas);
 
+// Any button with data-modal-target can open its matching dialog.
 document.querySelectorAll('[data-modal-target]').forEach((button) => {
   addUiListener(button, 'click', () => {
     const modal = document.querySelector(`#${button.dataset.modalTarget}`);
@@ -1346,14 +1510,19 @@ document.querySelectorAll('[data-modal-target]').forEach((button) => {
   });
 });
 
+// Draw the first setup screen.
 renderGameSetup();
 selectSetupMode('local');
 
+// Test helpers can call this to remove listeners between browser runs.
 window.tanksUiCleanup = () => {
   uiCleanupHandlers.forEach((cleanup) => cleanup());
   uiCleanupHandlers.length = 0;
 };
 
+// True when the user is typing/clicking inside a UI control.
+//
+// Game hotkeys should not fire while someone is editing a text field.
 function isUiInputTarget(target) {
   // Let form controls receive their own keys.
   // This keeps typing "wasd" in a designer text box from moving the cannon,

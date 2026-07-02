@@ -8,8 +8,8 @@ index of good task ideas.
 
 ## Current Best Sequence
 
-1. Add one hand-drawn tank to `src/game/tankModels.js`.
-2. Add one hand-drawn turret to `src/game/tankModels.js`.
+1. Copy an existing tank in `src/game/tankModels.js`, rename the copy, and turn it into one hand-drawn tank.
+2. Copy `hillTurret`, rename the copy, and turn it into one hand-drawn turret.
 3. Tune the collision box for the new tank.
 4. Fix the Ammo Designer slider mappings in `src/main.js`.
 5. Make impact animations use the selected ammo size.
@@ -41,4 +41,4 @@ index of good task ideas.
 - Saving/loading with `localStorage`.
 - Large canvas drawing rewrites.
 - Full landscape generation.
-- Online multiplayer.
+- Multiplayer, networking, and server code.

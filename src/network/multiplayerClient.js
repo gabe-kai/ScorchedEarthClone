@@ -1,4 +1,16 @@
+// Browser-side LAN multiplayer helper.
+//
+// This class does not run the game rules. Its job is to:
+// - connect this browser to the Node WebSocket server
+// - show LAN rooms and slots
+// - send this player's commands to the server
+// - apply server snapshots to the canvas
+// - lock input when it is another player's turn
 export class MultiplayerClient {
+  // Store all the UI hooks and connect to the server.
+  //
+  // The constructor receives callbacks from main.js so this file does not need
+  // to know how every menu and designer is built.
   constructor({
     game,
     elements,
@@ -48,6 +60,10 @@ export class MultiplayerClient {
     this.applyTurnLock();
   }
 
+  // Attach click/change listeners to multiplayer UI controls.
+  //
+  // This is where buttons like Host LAN, Ready, Start, and Pause get their
+  // behavior.
   bindEvents() {
     this.elements.createButton.addEventListener('click', () => this.createRoom());
     this.elements.joinButton.addEventListener('click', () => this.joinFirstOpenSlot());
@@ -76,6 +92,9 @@ export class MultiplayerClient {
     this.game.setCommandHandler((command) => this.handleLocalGameCommand(command));
   }
 
+  // Ask the local server which LAN addresses other computers can try.
+  //
+  // Example result: http://192.168.1.25:5173
   async loadNetworkInfo() {
     try {
       const response = await fetch('/api/network-info');
@@ -86,6 +105,10 @@ export class MultiplayerClient {
     }
   }
 
+  // Open the WebSocket connection.
+  //
+  // WebSocket is the always-open pipe used for room updates, player commands,
+  // and game snapshots.
   connect() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     this.socket = new WebSocket(`${protocol}//${window.location.host}/multiplayer?playerToken=${encodeURIComponent(this.playerToken)}`);
@@ -111,6 +134,9 @@ export class MultiplayerClient {
     });
   }
 
+  // Handle one message from the server.
+  //
+  // Most multiplayer state changes enter the browser through this function.
   handleMessage(rawMessage) {
     let message;
 
@@ -217,6 +243,10 @@ export class MultiplayerClient {
     }
   }
 
+  // Ask the server to create a brand-new LAN room.
+  //
+  // This includes this browser's player name, tank choice, color, designer
+  // library, and match settings.
   createRoom() {
     this.ready = false;
     const sent = this.send('createRoom', {
@@ -230,6 +260,10 @@ export class MultiplayerClient {
     }
   }
 
+  // Make sure Host LAN has an active room.
+  //
+  // If the socket is not open yet, createRoom remembers that we need to host as
+  // soon as the connection finishes.
   ensureHosting() {
     if (this.isHost()) {
       this.publishLibrary();
@@ -240,6 +274,7 @@ export class MultiplayerClient {
     this.createRoom();
   }
 
+  // Join the first open playable slot in the currently selected room.
   joinFirstOpenSlot() {
     const room = this.activeRoom();
     const slot = room?.slots.find((candidate) => this.isPlayableSlot(candidate) && !candidate.clientId);
@@ -253,6 +288,7 @@ export class MultiplayerClient {
     this.send('joinSlot', { roomId: room.id, slotIndex: slot.index, ...this.playerPayload() });
   }
 
+  // Send player/AI slot counts and match settings to the server.
   configureRoom() {
     this.send('configureRoom', {
       playerSlots: Number(this.elements.playerSlotsInput.value || 2),
@@ -261,11 +297,15 @@ export class MultiplayerClient {
     });
   }
 
+  // Ready means "I am done choosing my player details."
   toggleReady() {
     this.ready = !this.currentSlot()?.ready;
     this.send('setReady', { ready: this.ready });
   }
 
+  // Ask the server to start the LAN game.
+  //
+  // The server checks whether enough players have joined and marked ready.
   startGame() {
     if (!this.canStart()) {
       this.lobbyMessage = this.startBlockReason();
@@ -276,10 +316,15 @@ export class MultiplayerClient {
     this.send('startGame');
   }
 
+  // Pause or resume the LAN game for everyone in the room.
   togglePause() {
     this.send('pauseGame', { paused: !this.room?.paused });
   }
 
+  // Intercept local game input during LAN play.
+  //
+  // Returning true means "the multiplayer client handled this; the local game
+  // should not also apply it directly."
   handleLocalGameCommand(command) {
     if (!this.room || this.room.phase !== 'playing') {
       return false;
@@ -323,6 +368,10 @@ export class MultiplayerClient {
     return true;
   }
 
+  // Avoid sending endless repeated keyDown messages while a key is held.
+  //
+  // Browsers repeat keyDown events automatically. The server only needs one
+  // keyDown when the key starts and one keyUp when it stops.
   shouldSendGameCommand(command) {
     if (command?.type === 'keyDown') {
       if (this.sentKeyCodes.has(command.code)) {
@@ -341,6 +390,10 @@ export class MultiplayerClient {
     return true;
   }
 
+  // Old host-authoritative fallback.
+  //
+  // Current LAN games are server-authoritative after start, so this should not
+  // run unless we deliberately support the older mode again.
   updateSnapshotPublishing() {
     if (this.snapshotTimer) {
       window.cancelAnimationFrame(this.snapshotTimer);
@@ -368,24 +421,28 @@ export class MultiplayerClient {
     this.snapshotTimer = window.requestAnimationFrame(publishLoop);
   }
 
+  // Send this browser's local snapshot in the old fallback mode.
   publishSnapshot() {
     if (!this.serverAuthoritative && this.isHost() && this.room?.phase === 'playing') {
       this.send('gameSnapshot', { snapshot: this.game.snapshot() });
     }
   }
 
+  // Send the host's current tank/ammo designer library to the room.
   publishLibrary() {
     if (this.isHost()) {
       this.send('updateLibrary', { library: this.getDesignerLibrary?.() || null });
     }
   }
 
+  // Send the host's match settings to the room.
   publishSettings() {
     if (this.isHost()) {
       this.send('updateSettings', { settings: this.getMatchSettings?.() || null });
     }
   }
 
+  // Apply the host's tank/ammo designer data on a joining browser.
   applyRoomLibrary() {
     const room = this.activeRoom();
 
@@ -407,6 +464,7 @@ export class MultiplayerClient {
     }
   }
 
+  // Apply the host's match settings on a joining browser.
   applyRoomSettings() {
     const room = this.activeRoom();
 
@@ -424,6 +482,10 @@ export class MultiplayerClient {
     this.applyMatchSettings?.(room.settings);
   }
 
+  // Start the browser's local ScorchedGame view for a LAN match.
+  //
+  // In server-authoritative play, this local game becomes a renderer/controller
+  // that follows server snapshots.
   startLocalMultiplayerGame() {
     const slots = this.room?.slots.filter((slot) => !slot.isAi).slice(0, 2) || [];
     const localSetup = this.getPlayerSetup();
@@ -437,6 +499,8 @@ export class MultiplayerClient {
     this.startLocalGame(setup);
   }
 
+  // Re-open the battlefield after a refresh if this browser reclaimed a slot in
+  // an already-running LAN game.
   resumeNetworkGameIfNeeded() {
     if (this.room?.phase !== 'playing' || this.networkGameStarted) {
       return;
@@ -448,6 +512,7 @@ export class MultiplayerClient {
     this.applyTurnLock();
   }
 
+  // Store this browser's LAN player details and send them to the server.
   saveAndSendPlayerDetails() {
     const details = this.playerPayload();
     this.name = details.name;
@@ -458,6 +523,7 @@ export class MultiplayerClient {
     this.send('updateSlot', details);
   }
 
+  // Read the current player name, tank, and color from the UI.
   playerPayload() {
     const details = this.getNetworkPlayerDetails();
 
@@ -468,6 +534,9 @@ export class MultiplayerClient {
     };
   }
 
+  // Redraw the LAN room panel.
+  //
+  // This rebuilds the room cards and slot rows from the latest server state.
   render() {
     const setupMode = this.elements.setupMode?.() || 'local';
     const room = setupMode === 'host' ? this.room : this.activeRoom();
@@ -541,6 +610,7 @@ export class MultiplayerClient {
     }
   }
 
+  // Draw the list of LAN rooms on the Join LAN tab.
   renderRoomList(activeRoom) {
     const list = document.createElement('div');
     list.className = 'multiplayer-room-list';
@@ -582,6 +652,7 @@ export class MultiplayerClient {
     this.elements.slotList.append(list);
   }
 
+  // Build a small button for a slot row.
   createSlotButton(label, onClick) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -590,6 +661,9 @@ export class MultiplayerClient {
     return button;
   }
 
+  // Decide whether local input should be enabled.
+  //
+  // During LAN games, only the active player's browser should control the tank.
   applyTurnLock() {
     if (!this.room || this.room.phase !== 'playing') {
       this.game.setSnapshotOnly(false);
@@ -618,6 +692,7 @@ export class MultiplayerClient {
     this.applyNetworkTurnInputLock();
   }
 
+  // Shared turn-lock logic for server-authoritative and fallback network play.
   applyNetworkTurnInputLock() {
     if (this.room.paused) {
       this.game.setInputEnabled(false, 'The LAN game is paused.');
@@ -640,14 +715,20 @@ export class MultiplayerClient {
     );
   }
 
+  // Find this browser's current player slot, if it has one.
   currentSlot() {
     return this.room?.slots.find((slot) => slot.clientId === this.clientId) || null;
   }
 
+  // True when this browser created the room.
   isHost() {
     return Boolean(this.room?.hostId && this.room.hostId === this.clientId);
   }
 
+  // The room the UI should currently show.
+  //
+  // Host mode shows your own room. Join mode can show a selected room even
+  // before you join it.
   activeRoom() {
     if (this.room) {
       return this.room;
@@ -656,10 +737,12 @@ export class MultiplayerClient {
     return this.rooms.find((room) => room.id === this.selectedRoomId) || this.firstJoinableRoom() || this.rooms[0] || null;
   }
 
+  // Find the first lobby room with an open playable slot.
   firstJoinableRoom() {
     return this.rooms.find((room) => room.phase !== 'playing' && room.slots.some((slot) => this.isPlayableSlot(slot) && !slot.clientId)) || null;
   }
 
+  // Check whether the room is ready to start.
   canStart() {
     const playerSlots = this.room?.slots.filter((slot) => this.isPlayableSlot(slot)) || [];
     const joinedPlayers = playerSlots.filter((slot) => slot.clientId);
@@ -667,6 +750,7 @@ export class MultiplayerClient {
     return joinedPlayers.length === 2 && readyGuests.every((slot) => slot.ready);
   }
 
+  // Explain why Start LAN Game is disabled.
   startBlockReason() {
     if (!this.room || this.room.phase === 'empty') {
       return 'Host a LAN room before starting.';
@@ -695,14 +779,19 @@ export class MultiplayerClient {
     return 'Ready to start.';
   }
 
+  // Return the display name of the room host.
   hostName() {
     return this.room?.slots.find((slot) => slot.clientId === this.room?.hostId)?.name || 'Another player';
   }
 
+  // Only the first two human slots are playable right now.
+  //
+  // Slots 3-6 are UI scaffolding for later multiplayer expansion.
   isPlayableSlot(slot) {
     return Boolean(slot && !slot.isAi && slot.index < 2);
   }
 
+  // Choose the short hint text at the top of the LAN slots panel.
   roomHintText(room, currentSlot, isHost) {
     if (!room || room.phase === 'empty') {
       return 'Host or join a room to use these slots';
@@ -733,10 +822,14 @@ export class MultiplayerClient {
     return 'Choose an open slot to join this room';
   }
 
+  // Update the small connection status label.
   setStatus(status) {
     this.elements.status.textContent = status;
   }
 
+  // Send a JSON message to the WebSocket server.
+  //
+  // Returns false if the socket is not ready yet.
   send(type, payload = {}) {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify({ type, ...payload }));
@@ -747,6 +840,10 @@ export class MultiplayerClient {
   }
 }
 
+// Give this browser a stable LAN identity.
+//
+// This is not a real login. It is just enough for "I refreshed my browser" to
+// reclaim the same LAN slot during an active game.
 function stablePlayerToken() {
   const existingToken = localStorage.getItem('tanksLanPlayerToken.v1');
 

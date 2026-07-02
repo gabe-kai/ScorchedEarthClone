@@ -101,18 +101,32 @@ export class ScorchedGame {
     this.reset();
   }
 
+  // Tell the game what to call when inventory changes.
+  //
+  // The browser UI uses this to redraw the quickbar and inventory window.
   setInventoryChangeHandler(handler) {
     this.inventoryChangeHandler = handler;
   }
 
+  // Tell the game what to call when the active turn changes.
+  //
+  // Multiplayer uses this to update the server's active slot.
   setTurnChangeHandler(handler) {
     this.turnChangeHandler = handler;
   }
 
+  // Tell the game what to call when a local player presses a control key.
+  //
+  // Multiplayer can intercept the command and send it to the server instead
+  // of applying it directly in this browser.
   setCommandHandler(handler) {
     this.commandHandler = handler;
   }
 
+  // Enable or disable player controls.
+  //
+  // When input is disabled, held keys are cleared so the tank does not keep
+  // moving after control is restored.
   setInputEnabled(enabled, message = '') {
     const wasEnabled = this.inputEnabled;
     this.inputEnabled = Boolean(enabled);
@@ -123,6 +137,10 @@ export class ScorchedGame {
     }
   }
 
+  // Choose whether this browser is allowed to simulate the game.
+  //
+  // In multiplayer, non-host clients mostly display server snapshots. That
+  // keeps every computer from inventing a different version of the shot.
   setSnapshotOnly(snapshotOnly) {
     const nextSnapshotOnly = Boolean(snapshotOnly);
 
@@ -137,15 +155,18 @@ export class ScorchedGame {
     }
   }
 
+  // Let the browser UI know inventory/quickbar data changed.
   notifyInventoryChanged() {
     if (this.inventoryChangeHandler) {
       this.inventoryChangeHandler();
     }
   }
 
+  // Replace the active tank model library.
+  //
+  // The Tank Designer can create a live library of tank models. The game keeps
+  // a reference here so the HUD and canvas use designer edits.
   setTankModels(tankModels) {
-    // The Tank Designer can create a live library of tank models.
-    // The game keeps a reference here so the HUD and canvas use designer edits.
     this.tankModels = tankModels;
 
     if (this.players) {
@@ -155,10 +176,12 @@ export class ScorchedGame {
     this.updateHud();
   }
 
+  // Replace the active ammo/item library.
+  //
+  // The Ammo Designer can build a live item library. Keeping it on the game
+  // object lets gameplay use designer edits instead of always reading the
+  // starter data from itemTypes.js.
   setItemTypes(itemTypes) {
-    // The Ammo Designer can build a live item library.
-    // Keeping it on the game object lets gameplay use designer edits instead
-    // of always reading the starter data from itemTypes.js.
     this.itemTypes = itemTypes;
 
     if (this.players) {
@@ -169,10 +192,12 @@ export class ScorchedGame {
     this.notifyInventoryChanged();
   }
 
+  // Apply player names, colors, and selected tank models.
+  //
+  // Player Setup chooses each player's display name and tank model. Applying
+  // it here updates the current round without resetting shots, terrain,
+  // inventory, or health.
   setPlayerSetup(playerSetup) {
-    // Player Setup chooses each player's display name and tank model.
-    // Applying it here updates the current round without resetting shots,
-    // terrain, inventory, or health.
     this.playerSetup = playerSetup.map((player, index) => ({
       name: player.name || `Player ${index + 1}`,
       modelId: player.modelId || (index === 0 ? 'p1Custom' : 'p2Custom'),
@@ -196,9 +221,11 @@ export class ScorchedGame {
     this.notifyInventoryChanged();
   }
 
+  // Start a full match from the setup screen.
+  //
+  // A match is the bigger container around several rounds. Starting a match
+  // applies setup, clears the scoreboard, and begins round 1.
   startMatch(playerSetup, matchRounds = this.matchRounds, landscapeMode = this.landscapeMode, waterOptions = {}) {
-    // A match is the bigger container around several rounds.
-    // Starting a match applies setup, clears the scoreboard, and begins round 1.
     this.playerSetup = playerSetup.map((player, index) => ({
       name: player.name || `Player ${index + 1}`,
       modelId: player.modelId || (index === 0 ? 'p1Custom' : 'p2Custom'),
@@ -217,14 +244,17 @@ export class ScorchedGame {
     this.notifyInventoryChanged();
   }
 
+  // Count how many rounds have been won by all players together.
   completedRounds() {
     return this.scoreboard.reduce((total, score) => total + score.roundsWon, 0);
   }
 
+  // True when the match has reached its chosen number of rounds.
   isMatchComplete() {
     return this.completedRounds() >= this.matchRounds;
   }
 
+  // Start the browser animation loop and keyboard listeners.
   start() {
     if (this.running) {
       return;
@@ -244,6 +274,10 @@ export class ScorchedGame {
     this.scheduleNextFrame();
   }
 
+  // Stop the browser animation loop and remove keyboard/page listeners.
+  //
+  // This is important during long dev sessions so old game loops do not pile
+  // up in the background.
   stop() {
     // SAFETY FOR LONG DEV SESSIONS
     //
@@ -264,6 +298,7 @@ export class ScorchedGame {
     window.removeEventListener('pagehide', this.handlePageHide);
   }
 
+  // Pause the game loop while the browser tab is hidden.
   onVisibilityChange() {
     // Pause the animation loop while the tab is hidden.
     // Resume with clean timing when the tab becomes visible again.
@@ -280,6 +315,7 @@ export class ScorchedGame {
     this.scheduleNextFrame();
   }
 
+  // Ask the browser for the next animation frame.
   scheduleNextFrame() {
     if (!this.running || document.hidden || this.animationFrameId !== null) {
       return;
@@ -288,6 +324,10 @@ export class ScorchedGame {
     this.animationFrameId = requestAnimationFrame((time) => this.tick(time));
   }
 
+  // Reset the battlefield for a fresh round.
+  //
+  // This creates new terrain, places both tanks, resets wind and turn state,
+  // and clears any projectile or explosion from the last round.
   reset() {
     this.roundNumber += 1;
     this.turnNumber = 1;
@@ -340,6 +380,10 @@ export class ScorchedGame {
     this.message = `${this.players[0].name}: aim with arrows, fire with Space.`;
   }
 
+  // Create one tank state object from a tank model.
+  //
+  // A model describes the shape. The tank state tracks changing values like
+  // health, angle, power, fuel, and inventory.
   createTank(name, x, modelId, angle, playerColor, preferredFacing) {
     // This function builds a plain object that stores one tank's state.
     //
@@ -373,6 +417,9 @@ export class ScorchedGame {
     };
   }
 
+  // Make one inventory match the current item library.
+  //
+  // This keeps designer-created ammo available without losing existing counts.
   syncInventoryWithItemTypes(inventory) {
     // Designer-created ammo should show up in each player's inventory list.
     // Existing counts are kept, while new items start with their default count.
@@ -395,10 +442,12 @@ export class ScorchedGame {
     }
   }
 
+  // Find a tank model by id, with a safe fallback.
   modelFor(modelId) {
     return this.tankModels[modelId] || this.tankModels.p1Custom || Object.values(this.tankModels)[0];
   }
 
+  // Recalculate a tank's model-dependent values after the designer changes.
   refreshTankModel(tank) {
     tank.modelId = this.tankModels[tank.modelId] ? tank.modelId : Object.keys(this.tankModels)[0];
     const model = this.modelFor(tank.modelId);
@@ -408,6 +457,10 @@ export class ScorchedGame {
     tank.height = model.collision.height;
   }
 
+  // Handle a key press from the browser.
+  //
+  // This function does not move the tank directly. Most held keys go into
+  // this.keys so update() can respond smoothly every frame.
   onKeyDown(event) {
     if (isUiInputTarget(event.target)) {
       this.keys.clear();
@@ -447,6 +500,7 @@ export class ScorchedGame {
     this.keys.add(event.code);
   }
 
+  // Handle a key release from the browser.
   onKeyUp(event) {
     if (this.commandHandler?.({ type: 'keyUp', code: event.code })) {
       return;
@@ -455,6 +509,10 @@ export class ScorchedGame {
     this.keys.delete(event.code);
   }
 
+  // Apply a control command object.
+  //
+  // Multiplayer uses this because server messages cannot send real KeyboardEvent
+  // objects. Plain command objects are easier to serialize.
   applyCommand(command) {
     if (!command || typeof command.type !== 'string') {
       return;
@@ -500,6 +558,9 @@ export class ScorchedGame {
     }
   }
 
+  // Capture the whole game state as plain data.
+  //
+  // The server sends snapshots to LAN clients, and tests can inspect them too.
   snapshot() {
     return {
       players: this.players.map((tank) => clonePlain(tank)),
@@ -527,6 +588,9 @@ export class ScorchedGame {
     };
   }
 
+  // Replace this browser's game state with a snapshot.
+  //
+  // Joining LAN clients use this to follow the server's authoritative game.
   applySnapshot(snapshot, options = {}) {
     if (!snapshot) {
       return;
@@ -562,6 +626,7 @@ export class ScorchedGame {
     }
   }
 
+  // One browser animation-frame step.
   tick(time) {
     if (!this.running) {
       return;
@@ -595,6 +660,9 @@ export class ScorchedGame {
     this.scheduleNextFrame();
   }
 
+  // Update game logic for one frame.
+  //
+  // Drawing happens separately in draw().
   update(deltaSeconds) {
     if (this.snapshotOnly) {
       return;
@@ -671,18 +739,24 @@ export class ScorchedGame {
     }
   }
 
+  // Switch the active player between aiming and driving.
+  //
+  // The same arrow/WASD controls can aim the cannon or move the tank, so this
+  // tiny mode switch decides what those keys mean right now.
   toggleControlMode() {
     this.controlMode = this.controlMode === 'aim' ? 'move' : 'aim';
     this.keys.clear();
     this.updateHud();
   }
 
+  // Update every tank for falling, landing, and water damage.
   updateTanks(deltaSeconds) {
     for (const tank of this.players) {
       this.updateTankFalling(tank, deltaSeconds);
     }
   }
 
+  // Move one tank downward if the ground has disappeared below it.
   updateTankFalling(tank, deltaSeconds) {
     if (tank.destroyed) {
       return;
@@ -711,6 +785,7 @@ export class ScorchedGame {
     tank.vy = 0;
   }
 
+  // Finish a fall and apply landing damage if the tank hit hard.
   landTank(tank, groundY) {
     const landingSpeed = tank.vy;
     tank.y = groundY;
@@ -725,6 +800,10 @@ export class ScorchedGame {
     this.applyEnvironmentalDamage(tank, damage, `${tank.name} landed hard.`);
   }
 
+  // Drive one tank left or right in Move mode.
+  //
+  // This spends fuel, follows the terrain, and starts falling if the drop is
+  // too steep.
   driveTank(tank, direction, deltaSeconds) {
     if (tank.destroyed || tank.falling || tank.moveFuel <= 0) {
       return;
@@ -757,6 +836,7 @@ export class ScorchedGame {
     }
   }
 
+  // Find a dry x position near a preferred spawn point.
   findDrySpawnX(preferredX, minX, maxX, platformWidth) {
     if (this.isSpawnZoneDry(preferredX, platformWidth)) {
       return preferredX;
@@ -780,6 +860,7 @@ export class ScorchedGame {
     return preferredX;
   }
 
+  // Check whether a spawn platform would start above water.
   isSpawnZoneDry(centerX, width) {
     const halfWidth = width / 2;
 
@@ -792,6 +873,7 @@ export class ScorchedGame {
     return true;
   }
 
+  // Raise terrain under a spawn zone so a tank does not begin underwater.
   ensureDrySpawnZone(centerX, width) {
     // Tanks need a little runway. Turrets only need a small pad.
     // Smaller y is higher land, so this raises flooded spawn zones above water.
@@ -809,25 +891,30 @@ export class ScorchedGame {
     }
   }
 
+  // Put a tank exactly on the terrain under it.
   snapTankToGround(tank) {
     tank.y = this.groundYAt(tank.x);
     tank.vy = 0;
     tank.falling = false;
   }
 
+  // True when the water layer is exposed at this x position.
   isWaterAt(x) {
     return this.waterEnabled && this.groundYAt(x) > this.seaLevel;
   }
 
+  // How deep the water is above the ground at this x position.
   waterDepthAt(x) {
     return this.waterEnabled ? Math.max(0, this.groundYAt(x) - this.seaLevel) : 0;
   }
 
+  // True when a tank is too deep underwater.
   isTankInWater(tank) {
     return this.waterDepthAt(tank.x) > tank.height * DEEP_WATER_FRACTION &&
       tank.y >= this.seaLevel - 2;
   }
 
+  // Destroy a tank because it sank too deep.
   destroyTankInWater(tank) {
     if (tank.destroyed) {
       return;
@@ -836,6 +923,7 @@ export class ScorchedGame {
     this.applyEnvironmentalDamage(tank, WATER_DAMAGE, `${tank.name} sank below the waterline!`);
   }
 
+  // Apply fall/water/environment damage to one tank.
   applyEnvironmentalDamage(tank, damage, message) {
     const actualDamage = Math.min(tank.health, Math.max(0, Math.round(damage)));
     tank.health = Math.max(0, tank.health - actualDamage);
@@ -865,6 +953,7 @@ export class ScorchedGame {
     this.message = `${tank.name} was destroyed by the landscape. ${winner.name} wins the round.`;
   }
 
+  // Turn a tank's cannon, including one-sided tank flip behavior.
   turnTankCannon(tank, direction, deltaSeconds) {
     const model = this.modelFor(tank.modelId);
     const minAngle = model.cannon?.minAngle ?? 5;
@@ -885,6 +974,7 @@ export class ScorchedGame {
     tank.angle = turnCannon(tank.angle, localDirection, CANNON_TURN_SPEED, deltaSeconds, minAngle, maxAngle);
   }
 
+  // Move the active projectile and decide what it hit.
   updateProjectile(deltaSeconds) {
     // MOVE THE CANNON BALL
     //
@@ -940,6 +1030,7 @@ export class ScorchedGame {
     }
   }
 
+  // Let an explosion/water splash animation finish before the next turn.
   updateImpact(deltaSeconds) {
     // IMPACT ANIMATION TIMER
     //
@@ -965,6 +1056,7 @@ export class ScorchedGame {
     }
   }
 
+  // Move floating damage text upward and remove old floaters.
   updateFloaters(deltaSeconds) {
     // Floating text is only decoration, so it should clean itself up quickly.
     this.floaters = this.floaters
@@ -972,6 +1064,7 @@ export class ScorchedGame {
       .filter((floater) => floater.age < floater.duration);
   }
 
+  // Apply direct-hit damage to a tank.
   applyTankHit(target, x, y) {
     // DIRECT HIT DAMAGE
     //
@@ -1017,6 +1110,7 @@ export class ScorchedGame {
     });
   }
 
+  // Add one floating message, like "-20" or "KNOCKOUT!".
   addFloater(text, x, y, options = {}) {
     this.floaters.push({
       text,
@@ -1029,6 +1123,7 @@ export class ScorchedGame {
     });
   }
 
+  // Start a short visual effect at an impact point.
   startImpact(kind, x, y, options = {}) {
     // CREATE AN IMPACT ANIMATION
     //
@@ -1048,6 +1143,7 @@ export class ScorchedGame {
     }
   }
 
+  // Check whether the projectile has hit any tank.
   findProjectileTankHit() {
     // Check the other tank first.
     const candidates = [this.otherTank()];
@@ -1067,6 +1163,10 @@ export class ScorchedGame {
     return null;
   }
 
+  // Fire the selected ammo from the current tank.
+  //
+  // This does the setup work for a shot. updateProjectile() handles the flying
+  // cannon ball on later frames.
   fire(options = {}) {
     if (!this.inputEnabled && !options.ignoreInputLock) {
       if (this.inputBlockedMessage) {
@@ -1113,6 +1213,7 @@ export class ScorchedGame {
     this.message = `${tank.name} fired ${selectedItem.name}.`;
   }
 
+  // Move sea level upward after a shot for the Rising Sea mode.
   raiseWaterAfterShot() {
     if (!this.waterEnabled || this.waterRisePerShot <= 0) {
       return;
@@ -1121,6 +1222,7 @@ export class ScorchedGame {
     this.seaLevel = Math.max(MIN_TERRAIN_Y, this.seaLevel - this.waterRisePerShot);
   }
 
+  // End the current turn and give control to the other player.
   nextTurn() {
     // There are only two players, index 0 and index 1.
     // 1 - 0 becomes 1. 1 - 1 becomes 0.
@@ -1141,35 +1243,42 @@ export class ScorchedGame {
     }
   }
 
+  // Return the tank whose turn it is.
   currentTank() {
     // Return the tank whose turn it is.
     return this.players[this.currentPlayerIndex];
   }
 
+  // Return the tank whose turn it is not.
   otherTank() {
     // Return the tank whose turn it is NOT.
     return this.players[1 - this.currentPlayerIndex];
   }
 
+  // Return the active player's inventory.
   currentInventory() {
     return this.currentTank().inventory;
   }
 
+  // Return the item id in the selected quickbar slot.
   selectedItemId() {
     const inventory = this.currentInventory();
     return inventory.quickbar[inventory.selectedSlot] || null;
   }
 
+  // Return the selected item definition from the item library.
   selectedItem() {
     const itemId = this.selectedItemId();
     return itemId ? this.itemTypes[itemId] : null;
   }
 
+  // Return the active player's count/state for the selected item.
   selectedItemState() {
     const itemId = this.selectedItemId();
     return itemId ? this.currentInventory().items[itemId] : null;
   }
 
+  // Return quickbar data in a shape the UI can render.
   quickbarItems() {
     const inventory = this.currentInventory();
 
@@ -1181,6 +1290,7 @@ export class ScorchedGame {
     }));
   }
 
+  // Return inventory rows in a shape the UI can render.
   inventoryItems() {
     const inventory = this.currentInventory();
 
@@ -1192,6 +1302,7 @@ export class ScorchedGame {
     }));
   }
 
+  // Select a quickbar slot.
   selectQuickbarSlot(slotIndex, options = {}) {
     if (!options.fromCommand && this.commandHandler?.({ type: 'selectQuickbar', slotIndex })) {
       return;
@@ -1208,6 +1319,7 @@ export class ScorchedGame {
     this.notifyInventoryChanged();
   }
 
+  // Put an inventory item into a quickbar slot.
   assignQuickbarSlot(itemId, slotIndex, options = {}) {
     if (!options.fromCommand && this.commandHandler?.({ type: 'assignQuickbar', itemId, slotIndex })) {
       return;
@@ -1225,6 +1337,7 @@ export class ScorchedGame {
     this.notifyInventoryChanged();
   }
 
+  // Buy one item if the item can be purchased.
   purchaseItem(itemId, options = {}) {
     if (!options.fromCommand && this.commandHandler?.({ type: 'purchaseItem', itemId })) {
       return;
@@ -1245,6 +1358,7 @@ export class ScorchedGame {
     this.notifyInventoryChanged();
   }
 
+  // Sell one item if the player has at least one.
   sellItem(itemId, options = {}) {
     if (!options.fromCommand && this.commandHandler?.({ type: 'sellItem', itemId })) {
       return;
@@ -1275,6 +1389,7 @@ export class ScorchedGame {
     this.notifyInventoryChanged();
   }
 
+  // Spend one ammo/tool from the selected quickbar slot after firing.
   consumeSelectedItem() {
     const inventory = this.currentInventory();
     const itemId = this.selectedItemId();
@@ -1301,6 +1416,7 @@ export class ScorchedGame {
     inventory.selectedSlot = firstFilledQuickbarSlot(inventory.quickbar);
   }
 
+  // Draw the entire battlefield on the canvas.
   draw() {
     // DRAW ONE FRAME
     //
@@ -1329,6 +1445,7 @@ export class ScorchedGame {
     this.drawFloaters(ctx);
   }
 
+  // Draw the sky and sun.
   drawSky(ctx) {
     // Paint the sky background and the sun.
     ctx.fillStyle = '#8ec6e6';
@@ -1340,6 +1457,7 @@ export class ScorchedGame {
     ctx.fill();
   }
 
+  // Draw water, grass/terrain, and bedrock.
   drawGround(ctx) {
     this.drawWater(ctx);
 
@@ -1362,6 +1480,7 @@ export class ScorchedGame {
     this.drawBedrock(ctx);
   }
 
+  // Draw the non-deformable stone layer.
   drawBedrock(ctx) {
     ctx.fillStyle = '#2d2f2f';
     ctx.beginPath();
@@ -1377,6 +1496,7 @@ export class ScorchedGame {
     ctx.fill();
   }
 
+  // Draw the water layer behind the terrain.
   drawWater(ctx) {
     if (!this.waterEnabled) {
       return;
@@ -1393,6 +1513,7 @@ export class ScorchedGame {
     ctx.stroke();
   }
 
+  // Draw one tank, including body, cab, cannon, damage marks, and name.
   drawTank(ctx, tank) {
     // DRAW ONE TANK MODEL
     //
@@ -1427,6 +1548,7 @@ export class ScorchedGame {
     ctx.fillText(tank.name, tank.x, tank.y + 36);
   }
 
+  // Draw the current impact animation.
   drawImpact(ctx, impact) {
     // DRAW IMPACT ANIMATION
     //
@@ -1451,6 +1573,7 @@ export class ScorchedGame {
     }
   }
 
+  // Update the right sidebar HUD and the small tank preview.
   updateHud() {
     // UPDATE THE TEXT ON THE RIGHT SIDE OF THE SCREEN
     //
@@ -1508,6 +1631,7 @@ export class ScorchedGame {
     }
   }
 
+  // Draw the current tank icon in the player panel.
   drawHudTankPreview(tank, model) {
     const canvas = this.hud.tankHudPreview;
 
@@ -1552,6 +1676,7 @@ export class ScorchedGame {
     ctx.stroke();
   }
 
+  // Draw scorch/crack/smoke marks for damaged tanks.
   drawTankDamage(ctx, tank, model) {
     // DAMAGE MARKS
     //
@@ -1581,6 +1706,7 @@ export class ScorchedGame {
     }
   }
 
+  // Draw floating damage and knockout text.
   drawFloaters(ctx) {
     for (const floater of this.floaters) {
       const progress = floater.age / floater.duration;
@@ -1599,6 +1725,7 @@ export class ScorchedGame {
     }
   }
 
+  // Interpolate terrain height at any x coordinate.
   groundYAt(x) {
     // FIND THE TERRAIN HEIGHT AT ONE X POSITION
     //
@@ -1607,6 +1734,7 @@ export class ScorchedGame {
     return this.terrain[index];
   }
 
+  // Dig a crater into the terrain around an impact point.
   deformTerrainAt(x, y) {
     // DIG A CRATER INTO THE TERRAIN
     //
@@ -1639,6 +1767,7 @@ export class ScorchedGame {
   }
 }
 
+// Convert a terrain array index into a screen x coordinate.
 function terrainIndexToX(index) {
   // Convert a terrain array index into a screen x position.
   //
@@ -1649,18 +1778,23 @@ function terrainIndexToX(index) {
   return index * TERRAIN_STEP;
 }
 
+// Distance between two one-dimensional positions.
 function distanceBetween(a, b) {
   // Distance should always be positive.
   // Math.abs turns negative answers into positive answers.
   return Math.abs(a - b);
 }
 
+// True when a terrain point is close enough to be affected by a crater.
 function isInsideCrater(distance, craterRadius) {
   // This function decides whether one terrain point is close enough
   // to the hit to be part of the crater.
   return distance < craterRadius;
 }
 
+// Calculate crater depth for a point.
+//
+// The center digs deepest; the edge digs only a little.
 function craterDepthAt(distance, craterRadius, maxDepth) {
   // Make the crater deeper in the middle and shallower at the edges.
   //
@@ -1669,28 +1803,33 @@ function craterDepthAt(distance, craterRadius, maxDepth) {
   return maxDepth * closeness;
 }
 
+// Keep terrain heights inside sane screen bounds.
 function clampTerrainY(y) {
   // Keep future crater code from pushing terrain to wild values.
   // This protects long play sessions from impossible terrain shapes.
   return Math.max(MIN_TERRAIN_Y, Math.min(MAX_TERRAIN_Y, y));
 }
 
+// Clamp a number inside a range.
 function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+// Convert a water-level percentage into a canvas y coordinate.
 function waterPercentToY(percent) {
   // Percent is measured upward from the bottom of the battlefield.
   // 0 means no visible water. 50 means halfway up the canvas.
   return HEIGHT - HEIGHT * (percent / 100);
 }
 
+// Give the bedrock layer a slight wave so it is not perfectly flat.
 function bedrockTopYAt(x) {
   return BEDROCK_Y +
     Math.sin(x / 115) * 5 +
     Math.sin(x / 37) * 2;
 }
 
+// Create fresh score rows for a new match.
 function createScoreboard(playerSetup) {
   return playerSetup.map((player) => ({
     name: player.name,
@@ -1700,11 +1839,15 @@ function createScoreboard(playerSetup) {
   }));
 }
 
+// Pick the first quickbar slot that has an item.
 function firstFilledQuickbarSlot(quickbar) {
   const filledIndex = quickbar.findIndex((itemId) => itemId !== null);
   return filledIndex === -1 ? 0 : filledIndex;
 }
 
+// Deep-copy plain data objects and arrays.
+//
+// Snapshots use this so server/client state does not share object references.
 function clonePlain(value) {
   if (value === null || typeof value !== 'object') {
     return value;
@@ -1719,6 +1862,7 @@ function clonePlain(value) {
   );
 }
 
+// Update text only when it actually changed.
 function setText(element, text) {
   // updateHud runs every frame, even when nothing visible changed.
   // Checking first avoids asking the browser to redo text layout needlessly.
@@ -1727,6 +1871,7 @@ function setText(element, text) {
   }
 }
 
+// True when keyboard input should belong to a form control, not the game.
 function isUiInputTarget(target) {
   // When Daniel is typing in a form field, the game should let the browser
   // handle the key. Otherwise W/A/S/D, arrows, and Space would still aim/fire.
@@ -1738,6 +1883,7 @@ function isUiInputTarget(target) {
   return target.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || tagName === 'BUTTON';
 }
 
+// Update tooltip text only when it changed.
 function setTitle(element, title) {
   // The title is the hover tooltip for exact aim/wind values.
   // Like textContent, changing it every frame would be wasted work.
@@ -1746,6 +1892,7 @@ function setTitle(element, title) {
   }
 }
 
+// Update a CSS variable only when it changed.
 function setStyleProperty(element, propertyName, value) {
   // CSS variables let the browser animate the HUD for us.
   // This helper keeps those style writes from happening when the value is
@@ -1755,6 +1902,7 @@ function setStyleProperty(element, propertyName, value) {
   }
 }
 
+// Convert #rrggbb into rgba(r, g, b, alpha).
 function hexToRgba(hexColor, alpha) {
   const red = parseInt(hexColor.slice(1, 3), 16);
   const green = parseInt(hexColor.slice(3, 5), 16);
@@ -1762,22 +1910,26 @@ function hexToRgba(hexColor, alpha) {
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
+// Pick a color for the power gauge.
 function powerColor(powerPercent) {
   // Low power is calmer green. High power moves toward hot orange.
   const hue = 125 - powerPercent * 90;
   return `hsl(${hue}, 85%, 58%)`;
 }
 
+// Pick a health bar color based on remaining health.
 function healthColor(healthPercent) {
   // Healthy tanks are green, damaged tanks slide toward red.
   const hue = Math.max(0, Math.min(120, healthPercent * 120));
   return `hsl(${hue}, 78%, 48%)`;
 }
 
+// Capitalize the first letter for short HUD labels.
 function titleCase(text) {
   return text.slice(0, 1).toUpperCase() + text.slice(1);
 }
 
+// Choose which way a tank model should face at spawn.
 function startingFacing(model, preferredFacing) {
   // Tanks with one-sided cannons should start by facing the enemy.
   // Turrets and full top-arc cannons do not need to flip their artwork.
@@ -1788,6 +1940,9 @@ function startingFacing(model, preferredFacing) {
   return preferredFacing < 0 ? -1 : 1;
 }
 
+// Convert a screen/world angle into a tank-local cannon angle.
+//
+// This matters for tanks that can face left or right.
 function worldAngleToLocal(worldAngle, facing) {
   // The designer stores a tank's angle as "local" graph-paper math:
   // 0 points toward the tank's front, 90 points straight up.
@@ -1795,12 +1950,14 @@ function worldAngleToLocal(worldAngle, facing) {
   return facing < 0 ? 180 - worldAngle : worldAngle;
 }
 
+// Convert a tank-local angle into the real screen/world angle.
 function tankWorldAngle(tank) {
   // The canvas and projectile math need a world angle:
   // 0 points right, 90 points up, 180 points left.
   return tank.facing < 0 ? 180 - tank.angle : tank.angle;
 }
 
+// Find the cannon pivot point on the screen for one tank.
 function tankCannonPivot(tank, model) {
   // The pivot is the point where the cannon rotates.
   // If the tank faces left, the x coordinate mirrors across the tank center.
@@ -1810,6 +1967,7 @@ function tankCannonPivot(tank, model) {
   };
 }
 
+// Draw a tank body/cab polygon at normal game scale.
 function drawPolygon(ctx, originX, originY, points, fillStyle, facing = 1) {
   // Draw a shape from graph-paper points.
   //
@@ -1831,6 +1989,7 @@ function drawPolygon(ctx, originX, originY, points, fillStyle, facing = 1) {
   ctx.fill();
 }
 
+// Draw a tank polygon at preview/HUD scale.
 function drawScaledPolygon(ctx, originX, originY, points, fillStyle, facing, scale) {
   // Same idea as drawPolygon, but for tiny previews.
   // It avoids building new scaled arrays every animation frame.
@@ -1850,6 +2009,7 @@ function drawScaledPolygon(ctx, originX, originY, points, fillStyle, facing, sca
   ctx.fill();
 }
 
+// Draw one dark scorch mark on a damaged tank.
 function drawScorch(ctx, x, y, radius) {
   ctx.fillStyle = 'rgba(22, 20, 18, 0.72)';
   ctx.beginPath();
@@ -1857,6 +2017,7 @@ function drawScorch(ctx, x, y, radius) {
   ctx.fill();
 }
 
+// Draw one zig-zag crack on a damaged tank.
 function drawCrack(ctx, x, y, facing) {
   ctx.strokeStyle = 'rgba(12, 13, 14, 0.86)';
   ctx.lineWidth = 2;
@@ -1869,6 +2030,7 @@ function drawCrack(ctx, x, y, facing) {
   ctx.stroke();
 }
 
+// Draw a simple smoke puff above a badly damaged tank.
 function drawSmoke(ctx, x, y) {
   ctx.fillStyle = 'rgba(28, 31, 33, 0.5)';
   ctx.beginPath();
@@ -1878,24 +2040,31 @@ function drawSmoke(ctx, x, y) {
   ctx.fill();
 }
 
+// Pick a new wind value for a turn.
 function randomWind() {
   // This picks a new wind strength between about -35 and +35.
   // Negative wind pushes left. Positive wind pushes right.
   return Math.round((Math.random() * 70 - 35) * 10) / 10;
 }
 
+// Pick a random number between min and max.
 function randomRange(min, max) {
   return min + Math.random() * (max - min);
 }
 
+// Randomly choose -1 or 1.
 function randomSign() {
   return Math.random() < 0.5 ? -1 : 1;
 }
 
+// Convert unknown landscape names back to a safe default.
 function normalizeLandscapeMode(mode) {
   return mode === 'cycle' || LANDSCAPE_MODES.includes(mode) ? mode : 'cycle';
 }
 
+// Create terrain for a new round.
+//
+// "cycle" moves through landscape types as rounds advance.
 function createLandscape(roundNumber, selectedMode = 'cycle') {
   const mode = selectedMode === 'cycle'
     ? LANDSCAPE_MODES[(roundNumber - 1) % LANDSCAPE_MODES.length]
@@ -1909,6 +2078,8 @@ function createLandscape(roundNumber, selectedMode = 'cycle') {
   };
 }
 
+// Add random seed-like numbers so each landscape generation is a little
+// different without needing a full noise library.
 function createLandscapeVariant(mode) {
   // Math.random gives each new round a fresh silhouette.
   // The mode still controls the overall flavor: hills, cliffs, rising sea, or mixed.
@@ -1939,6 +2110,9 @@ function createLandscapeVariant(mode) {
   };
 }
 
+// Generate the raw terrain height array for one landscape.
+//
+// Each entry is a y coordinate. Smaller y means higher ground.
 function createBaseTerrain(mode, variant) {
   // Build an array of terrain heights.
   // Smaller y means higher land. Bigger y means lower land.
@@ -1992,6 +2166,7 @@ function createBaseTerrain(mode, variant) {
   return smoothTerrain(terrain, mode === 'cliffs' ? 1 : 2);
 }
 
+// Make a smooth valley shape for water/terrain dips.
 function lowDipAt(x, centerX, width, depth) {
   const distance = Math.abs(x - centerX);
 
@@ -2003,6 +2178,7 @@ function lowDipAt(x, centerX, width, depth) {
   return depth * closeness;
 }
 
+// Ensure rolling hills usually expose at least a little water.
 function ensureDefaultWaterDip(terrain, centerX, width) {
   const defaultSeaLevel = waterPercentToY(18);
 
@@ -2019,6 +2195,7 @@ function ensureDefaultWaterDip(terrain, centerX, width) {
   }
 }
 
+// Raise terrain until enough of the map is dry land.
 function ensureMostlyDryTerrain(terrain, minimumDryRatio) {
   const defaultSeaLevel = waterPercentToY(18);
   let dryRatio = terrain.filter((groundY) => groundY <= defaultSeaLevel).length / terrain.length;
@@ -2032,6 +2209,7 @@ function ensureMostlyDryTerrain(terrain, minimumDryRatio) {
   }
 }
 
+// Decide how high to lift land for each landscape style.
 function landscapeLift(mode) {
   if (mode === 'rolling') {
     return 82;
@@ -2048,16 +2226,19 @@ function landscapeLift(mode) {
   return 78;
 }
 
+// Tanks need more flat land than turrets because tanks can drive.
 function spawnPlatformWidth(model) {
   return model.type === 'turret' || model.canMove === false ? 72 : 190;
 }
 
+// Flatten both player start zones enough to make the first turn fair.
 function protectStartZones(terrain) {
   // Keep the first version fair: both tanks get usable starting shelves.
   flattenZone(terrain, 190, 92);
   flattenZone(terrain, 1090, 92);
 }
 
+// Flatten a small area of terrain around one x coordinate.
 function flattenZone(terrain, centerX, width) {
   const centerIndex = Math.round(centerX / TERRAIN_STEP);
   const targetY = terrain[centerIndex];
@@ -2071,6 +2252,7 @@ function flattenZone(terrain, centerX, width) {
   }
 }
 
+// Smooth terrain by averaging each point with its neighbors.
 function smoothTerrain(terrain, passes) {
   let smoothed = terrain;
 
@@ -2085,6 +2267,7 @@ function smoothTerrain(terrain, passes) {
   return smoothed;
 }
 
+// Convert a landscape id into readable HUD/setup text.
 function landscapeName(mode) {
   if (mode === 'rolling') {
     return 'Rolling Hills';

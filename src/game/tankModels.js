@@ -6,6 +6,8 @@
 // - y: negative is up, positive is down
 //
 // Daniel's graph-paper tank designs will go in this file.
+// Good habit: copy a working model, paste the copy below it, rename the copy,
+// then edit the new model. Keep the starter models as examples.
 //
 // Model vocabulary:
 // - body is the lower polygon.
@@ -15,8 +17,9 @@
 // - cannon describes the angle rules we want to support as the designer grows.
 
 export const TANK_MODELS = {
-  // DANIEL TANK MODEL TASK:
-  // Replace these starter points with Player 1's graph-paper tank.
+  // Starter tank example.
+  // Daniel should copy this whole object, paste the copy below p2Custom,
+  // rename the copy, then change its points.
   p1Custom: {
     name: 'Player 1 Custom',
     type: 'tank',
@@ -45,8 +48,8 @@ export const TANK_MODELS = {
     collision: { width: 44, height: 24 }
   },
 
-  // DANIEL TANK MODEL TASK:
-  // Replace these starter points with Player 2's graph-paper tank.
+  // Starter tank example.
+  // This gives Daniel a second working shape to compare against.
   p2Custom: {
     name: 'Player 2 Custom',
     type: 'tank',
